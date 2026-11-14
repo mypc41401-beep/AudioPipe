@@ -1,83 +1,109 @@
 package com.asdfg.soundmaster.adb
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiScrollable
-import androidx.test.uiautomator.UiSelector
-import androidx.test.uiautomator.Until
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.regex.Pattern
-import java.io.ByteArrayOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
-/** Real Android 14 Settings pairing server, real TLS exporter, real adbd shell. No Bluetooth claims. */
+/**
+ * Real API-34 system pairing server, TLS exporter and adbd. CI starts the same service
+ * used by Settings through shell-only IAdbManager transactions (AOSP android-14.0.0_r1).
+ * Shell permission is dropped BEFORE invoking any production pairing/client code.
+ * These fixture commands are in the test APK only, never in the application APK.
+ */
 @RunWith(AndroidJUnit4::class)
 class AdbWirelessIntegrationTest {
-    @Test fun pairWithAndroidSettingsAndAuthenticateShell() = runBlocking {
+    @Test fun pairWithSystemAdbdAndAuthenticateShell() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val automation = instrumentation.uiAutomation
         val context = instrumentation.targetContext
         val device = UiDevice.getInstance(instrumentation)
-        assertEquals("Real pairing requires a secure-adbd system image", "1",
+        assertEquals("Real pairing requires secure adbd", "1",
             device.executeShellCommand("getprop ro.adb.secure").trim())
-        device.executeShellCommand("settings put global development_settings_enabled 1")
-        device.executeShellCommand("settings put global device_provisioned 1")
-        device.executeShellCommand("settings put secure user_setup_complete 1")
         device.executeShellCommand("svc wifi enable")
+        var wifi = ""
+        var bssid: String? = null
+        repeat(50) {
+            if (bssid == null) {
+                wifi = device.executeShellCommand("cmd wifi status")
+                bssid = Regex("(?i)BSSID: ([0-9a-f:]{17})").find(wifi)?.groupValues?.get(1)
+                if (bssid == null) Thread.sleep(200)
+            }
+        }
+        val currentBssid = bssid ?: error("Emulator has no connected Wi-Fi BSSID: $wifi")
+        val allowed = device.executeShellCommand("service call adb 4 i32 1 s16 $currentBssid")
+        check(!allowed.contains("Exception")) { "Could not authorize emulator Wi-Fi: $allowed" }
         device.executeShellCommand("settings put global adb_wifi_enabled 1")
-        device.wakeUp()
-        device.executeShellCommand("wm dismiss-keyguard")
-        // AOSP has no WirelessDebuggingActivity. Follow the public Developer options UI.
-        device.executeShellCommand("pm enable com.android.settings/.Settings\$DevelopmentSettingsDashboardActivity")
-        val launch = device.executeShellCommand("am start -a android.settings.APPLICATION_DEVELOPMENT_SETTINGS")
-        device.waitForIdle()
-        val found = UiScrollable(UiSelector().scrollable(true)).setMaxSearchSwipes(16)
-            .scrollIntoView(UiSelector().text("Wireless debugging"))
-        assertTrue("Developer options did not contain Wireless debugging: $launch", found)
-        device.findObject(By.text("Wireless debugging")).click()
-        device.wait(Until.findObject(By.text(Pattern.compile("(?i)allow"))), 2_000)?.click()
-        var pairRow = device.wait(Until.findObject(By.text("Pair device with pairing code")), 5_000)
-        if (pairRow == null) {
-            device.findObjects(By.checkable(true)).firstOrNull { !it.isChecked }?.click()
-            device.wait(Until.findObject(By.text(Pattern.compile("(?i)allow"))), 2_000)?.click()
-            pairRow = device.wait(Until.findObject(By.text("Pair device with pairing code")), 10_000)
+        var connectionPort = -1
+        repeat(50) {
+            if (connectionPort !in 1..65535) {
+                connectionPort = device.executeShellCommand("getprop service.adb.tls.port").trim().toIntOrNull() ?: -1
+                if (connectionPort !in 1..65535) Thread.sleep(200)
+            }
         }
-        if (pairRow == null) {
-            val hierarchy = ByteArrayOutputStream()
-            device.dumpWindowHierarchy(hierarchy)
-            val secure = device.executeShellCommand("getprop ro.adb.secure").trim()
-            val texts = device.findObjects(By.text(Pattern.compile(".+"))).map { it.text }.take(80)
-            error("Wireless debugging pairing row missing. launch=$launch, ro.adb.secure=$secure, texts=$texts, UI=${hierarchy.toString("UTF-8").take(12000)}")
+        check(connectionPort in 1..65535) { "Secure adbd TLS server did not start: $wifi" }
+
+        val ready = CountDownLatch(2)
+        val code = AtomicReference<String?>()
+        val pairingPort = AtomicInteger(-1)
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(unused: Context, intent: Intent) {
+                when (intent.getIntExtra("status", -1)) {
+                    3 -> intent.getStringExtra("pairing_code")?.let {
+                        if (code.compareAndSet(null, it)) ready.countDown()
+                    }
+                    4 -> {
+                        val port = intent.getIntExtra("adb_port", -1)
+                        if (port in 1..65535 && pairingPort.compareAndSet(-1, port)) ready.countDown()
+                    }
+                }
+            }
         }
-        pairRow.click()
-        val codeNode = device.wait(Until.findObject(By.text(Pattern.compile("[0-9]{6}"))), 10_000)
-            ?: error("Android did not show a pairing code")
-        val pin = codeNode.text
-        val connectionPort = device.executeShellCommand("getprop service.adb.tls.port").trim().toInt()
-        val addressSelector = By.text(Pattern.compile("[0-9.]+:[0-9]+"))
-        device.wait(Until.hasObject(addressSelector), 5_000)
-        val pairPort = device.findObjects(addressSelector).map { it.text.substringAfterLast(':').toInt() }
-            .firstOrNull { it != connectionPort } ?: error("Android did not show a separate pairing address")
-        val shell = ShellExecutor.getInstance(context)
-        shell.pair(pairPort, pin).getOrThrow()
-        assertTrue(context.getSharedPreferences("adb_settings", Context.MODE_PRIVATE).getBoolean("adb_paired", false))
-        // Pairing and connection ports are separate. adbd publishes the latter as a system property.
-        val port = device.executeShellCommand("getprop service.adb.tls.port").trim().toInt()
-        assertNotEquals(pairPort, port)
-        shell.connectResult(port).getOrThrow()
-        assertTrue(shell.isConnected)
-        assertTrue(shell.state.value.connected)
-        val uid = shell.commandSync("id -u").getOrThrow().trim()
-        assertTrue("Unexpected shell UID: $uid", uid == "2000" || uid == "0")
-        shell.disconnect()
-        // The same encrypted identity must still work after a new executor is constructed.
-        val recreated = ShellExecutor(context)
-        recreated.connectResult(port).getOrThrow()
-        assertTrue(recreated.isConnected)
-        recreated.disconnect()
+        // The real system broadcasts the code/port to holders of MANAGE_DEBUGGING.
+        // The permission is used only to observe fixture setup, not to authenticate ADB.
+        automation.adoptShellPermissionIdentity("android.permission.MANAGE_DEBUGGING")
+        try {
+            context.registerReceiver(receiver,
+                IntentFilter("com.android.server.adb.WIRELESS_DEBUG_PAIRING_RESULT"),
+                Context.RECEIVER_EXPORTED)
+            val started = device.executeShellCommand("service call adb 8")
+            check(!started.contains("Exception")) { "System pairing server refused to start: $started" }
+            assertTrue("System pairing code/port broadcast timed out", ready.await(15, TimeUnit.SECONDS))
+        } finally {
+            context.unregisterReceiver(receiver)
+            automation.dropShellPermissionIdentity()
+        }
+
+        try {
+            // All calls below execute as the ordinary application UID with manifest permissions.
+            val shell = ShellExecutor.getInstance(context)
+            shell.pair(pairingPort.get(), checkNotNull(code.get())).getOrThrow()
+            assertTrue(context.getSharedPreferences("adb_settings", Context.MODE_PRIVATE).getBoolean("adb_paired", false))
+            assertNotEquals(pairingPort.get(), connectionPort)
+            shell.connectResult(connectionPort).getOrThrow()
+            assertTrue(shell.isConnected)
+            assertTrue(shell.state.value.connected)
+            val uid = shell.commandSync("id -u").getOrThrow().trim()
+            assertEquals("2000", uid)
+            shell.disconnect()
+            val recreated = ShellExecutor(context)
+            recreated.connectResult(connectionPort).getOrThrow()
+            assertTrue(recreated.isConnected)
+            recreated.disconnect()
+        } finally {
+            code.set(null)
+            device.executeShellCommand("service call adb 11")
+        }
     }
 }
