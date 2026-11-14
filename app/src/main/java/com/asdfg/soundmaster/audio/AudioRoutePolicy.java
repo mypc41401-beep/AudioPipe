@@ -69,8 +69,10 @@ public final class AudioRoutePolicy implements AutoCloseable {
         if (selectedDevice.getId() != speaker.getId()) addMix.invoke(builder, makeMix(speaker, true));
         Object candidate = builderClass.getMethod("build").invoke(builder);
         Class<?> policyClass = Class.forName("android.media.audiopolicy.AudioPolicy");
-        int result = (Integer) AudioManager.class.getMethod("registerAudioPolicyStatic", policyClass)
-                .invoke(null, candidate);
+        // This static bridge is package-private on API 34, not a public getMethod() member.
+        Method register = AudioManager.class.getDeclaredMethod("registerAudioPolicyStatic", policyClass);
+        register.setAccessible(true);
+        int result = (Integer) register.invoke(null, candidate);
         if (result != 0) {
             throw new IllegalStateException("Android rejected UID audio policy (status " + result
                     + "). Shell permission or this ROM's Bluetooth/speaker outputs are unsupported.");
@@ -188,8 +190,12 @@ public final class AudioRoutePolicy implements AutoCloseable {
             if (policy != null) {
                 Object old = policy;
                 policy = null;
-                AudioManager.class.getMethod("unregisterAudioPolicyAsyncStatic",
-                        Class.forName("android.media.audiopolicy.AudioPolicy")).invoke(null, old);
+                Object callback = old.getClass().getMethod("cb").invoke(old);
+                // Use the synchronous binder method, not the oneway Async method: the control
+                // acknowledgement must follow removal before a rapid subsequent Start.
+                Class.forName("android.media.IAudioService").getMethod("unregisterAudioPolicy",
+                        Class.forName("android.media.audiopolicy.IAudioPolicyCallback"))
+                        .invoke(service, callback);
             }
         } finally {
             try {

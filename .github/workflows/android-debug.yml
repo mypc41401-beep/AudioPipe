@@ -73,6 +73,8 @@ jobs:
             app/build/reports/tests/
             app/build/test-results/
             app/build/reports/lint-results-debug.*
+            app/build/outputs/logs/manifest-merger-debug-report.txt
+            app/build/intermediates/merged_manifests/debug/AndroidManifest.xml
           if-no-files-found: ignore
           retention-days: 14
 
