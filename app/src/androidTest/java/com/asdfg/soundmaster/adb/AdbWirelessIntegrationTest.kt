@@ -11,6 +11,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.regex.Pattern
+import java.io.ByteArrayOutputStream
 
 /** Real Android 14 Settings pairing server, real TLS exporter, real adbd shell. No Bluetooth claims. */
 @RunWith(AndroidJUnit4::class)
@@ -22,9 +23,21 @@ class AdbWirelessIntegrationTest {
         device.executeShellCommand("settings put global development_settings_enabled 1")
         device.executeShellCommand("svc wifi enable")
         device.executeShellCommand("settings put global adb_wifi_enabled 1")
-        device.executeShellCommand("am start -n 'com.android.settings/.Settings\$WirelessDebuggingActivity'")
-        val pairRow = device.wait(Until.findObject(By.text("Pair device with pairing code")), 15_000)
-            ?: error("Wireless debugging pairing row was not available on this emulator")
+        // UiAutomation executes argv directly: shell quotes become literal component characters.
+        val launch = device.executeShellCommand("am start -n com.android.settings/.Settings\$WirelessDebuggingActivity")
+        device.wait(Until.findObject(By.text(Pattern.compile("(?i)allow"))), 2_000)?.click()
+        var pairRow = device.wait(Until.findObject(By.text("Pair device with pairing code")), 5_000)
+        if (pairRow == null) {
+            device.findObjects(By.checkable(true)).firstOrNull { !it.isChecked }?.click()
+            device.wait(Until.findObject(By.text(Pattern.compile("(?i)allow"))), 2_000)?.click()
+            pairRow = device.wait(Until.findObject(By.text("Pair device with pairing code")), 10_000)
+        }
+        if (pairRow == null) {
+            val hierarchy = ByteArrayOutputStream()
+            device.dumpWindowHierarchy(hierarchy)
+            val secure = device.executeShellCommand("getprop ro.adb.secure").trim()
+            error("Wireless debugging pairing row missing. launch=$launch, ro.adb.secure=$secure, UI=${hierarchy.toString("UTF-8").take(12000)}")
+        }
         pairRow.click()
         val codeNode = device.wait(Until.findObject(By.text(Pattern.compile("[0-9]{6}"))), 10_000)
             ?: error("Android did not show a pairing code")
