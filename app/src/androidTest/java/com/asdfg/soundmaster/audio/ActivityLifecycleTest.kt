@@ -15,9 +15,30 @@ import android.widget.TextView
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.runBlocking
 
 @RunWith(AndroidJUnit4::class)
 class ActivityLifecycleTest {
+    @Test fun productionHelperAuthenticatesAndReportsMissingBluetoothWithoutRetryLoop() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val device = UiDevice.getInstance(instrumentation)
+        // This fixture launches the real production helper via emulator shell. It grants no
+        // routing permission to the APK. Real Wireless ADB authentication has a separate test.
+        val session = RouteSession(context) { command -> runCatching { device.executeShellCommand(command) } }
+        try {
+            val result = runCatching { session.start(context.applicationInfo.uid, -98765, true) }
+            assertTrue(result.isFailure)
+            assertTrue("Must report the actual missing-device error: ${result.exceptionOrNull()}",
+                result.exceptionOrNull()?.message.orEmpty().contains("Bluetooth"))
+        } finally {
+            session.close()
+            // No policy/focus change occurred: the production daemon rejected the absent device.
+            context.getSharedPreferences(RouteSession.PREFS, Context.MODE_PRIVATE).edit()
+                .remove("restore_multi_focus").commit()
+        }
+    }
+
     @Test fun launchRecreateBackgroundAndRejectInvalidServiceStarts() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -45,6 +66,8 @@ class ActivityLifecycleTest {
                 assertTrue(it.findViewById<android.widget.Button>(R.id.startStopButton).isEnabled)
             }
             device.pressHome()
+            context.startActivity(Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
             assertTrue(RoutingDiagnostics.report(context).contains("originalPlayerRoutes"))
         }

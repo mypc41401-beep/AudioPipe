@@ -17,15 +17,16 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 
 /** One authenticated, loopback-only control connection owned by the foreground service. */
-class RouteSession(private val context: Context) {
+class RouteSession(private val context: Context,
+    private val execute: suspend (String) -> Result<String> = { ShellExecutor.getInstance(context).commandSync(it) }
+) {
     @Volatile private var socket: Socket? = null
     @Volatile private var listener: ServerSocket? = null
     private lateinit var input: BufferedReader
     private lateinit var output: PrintWriter
 
     suspend fun start(uid: Int, deviceId: Int, simultaneous: Boolean): String {
-        val shell = ShellExecutor.getInstance(context)
-        val original = shell.commandSync("settings get system multi_audio_focus_enabled").getOrThrow().trim()
+        val original = execute("settings get system multi_audio_focus_enabled").getOrThrow().trim()
         require(original == "0" || original == "1" || original == "null") {
             "Could not read Android multi-audio-focus state: $original"
         }
@@ -41,7 +42,7 @@ class RouteSession(private val context: Context) {
         listener = server
         server.soTimeout = 500
         try {
-            shell.commandSync(launchCommand(context.applicationInfo.sourceDir, server.localPort, token)).getOrThrow()
+            execute(launchCommand(context.applicationInfo.sourceDir, server.localPort, token)).getOrThrow()
             val deadline = System.nanoTime() + 15_000_000_000L
             while (socket == null && System.nanoTime() < deadline) {
                 currentCoroutineContext().ensureActive()

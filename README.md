@@ -16,7 +16,7 @@ the developer. An accepted policy, APK build, or preferred-device request is not
 - Other UIDs' media/game tracks request a speaker policy. No capture/replay is used by the service.
 - Requires ADB shell's privileged `MODIFY_AUDIO_ROUTING` capability. An ordinary APK cannot do this
   with normal runtime permissions. Firmware/HAL and explicit player output choices can prevent it.
-- Actual original-player device IDs are queried through the shell. Until both apps are observed,
+- Native current-output/client data is matched to original-player UIDs through the shell. Until both apps are observed,
   status says **Policy accepted; split not yet observed**. Persistent wrong/unknown routes stop the policy.
 - Foreground service owns the state and control connection. Activity recreation does not reconstruct
   status from empty spinner selections. Stop/process death returns control to Android's default routing.
@@ -32,7 +32,7 @@ Download **AudioPipe-debug** from a successful GitHub Actions run, extract its Z
 then Start **before** playing the two apps. Follow the Bengali guide's listening test and export logs.
 A new CI debug signing key may require uninstalling the previous test APK and pairing again.
 
-The legacy `PlayBackThread`/`AudioPlayer` capture code is retained but unused. Its volume/balance/EQ
+Legacy file paths are retained; the unsafe capture worker is disabled. `AudioPlayer` is unused. Its volume/balance/EQ
 controls are not presented as controls for original-player routing. The current path needs neither
 RECORD_AUDIO permission nor a MediaProjection consent. Use the original player/system volume controls.
 
@@ -47,7 +47,7 @@ Java 17, Gradle wrapper 8.9, AGP 8.2, SDK 34:
 
 GitHub Actions builds/signs/verifies the debug APK, runs JVM tests and lint, installs and tests on a
 secure API-34 emulator, and records launch/memory/crash logs. Native policy tests use emulator
-speaker/earpiece endpoints. They do **not** simulate or verify Xiaomi Bluetooth hardware isolation.
+virtual wired/speaker endpoints. They do **not** simulate or verify Xiaomi Bluetooth hardware isolation.
 No public release is published by the workflow.
 
 See [third-party notices](THIRD_PARTY_NOTICES.md). Earlier build reviews are historical; the current

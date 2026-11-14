@@ -203,13 +203,28 @@ class MainActivity : AppCompatActivity() {
         val pkg = selectedApp ?: return toast("Select the music app first")
         val device = selectedOutput ?: return toast("Connect and select X-906 or another Bluetooth media device")
         if (!shellExecutor.isConnected) { toast("Connect AudioPipe in Setup / Pair first"); showAdbSetup(); return }
-        startForegroundService(Intent(this, SoundMasterService::class.java).apply {
-            putExtra("package", pkg)
-            putExtra("device", device.id)
-            putExtra("deviceName", device.productName.toString())
-        })
-        // Only the service may announce policy acceptance or observed outputs.
-        startStopButton.isEnabled = false
+        try {
+            startForegroundService(Intent(this, SoundMasterService::class.java).apply {
+                putExtra("package", pkg)
+                putExtra("device", device.id)
+                putExtra("deviceName", device.productName.toString())
+            })
+            // Only the service may announce policy acceptance or observed outputs.
+            serviceStatus.text = "Starting foreground service…"
+            startStopButton.isEnabled = false
+            lifecycleScope.launch {
+                kotlinx.coroutines.delay(5000)
+                if (!SoundMasterService.running && serviceStatus.text == "Starting foreground service…") {
+                    startStopButton.isEnabled = true
+                    serviceStatus.text = "Android did not start the routing service. Retry with AudioPipe open."
+                    RoutingDiagnostics.record(serviceStatus.text.toString())
+                }
+            }
+        } catch (error: RuntimeException) {
+            startStopButton.isEnabled = true
+            serviceStatus.text = "Could not start routing service: ${error.message}"
+            RoutingDiagnostics.record(serviceStatus.text.toString())
+        }
     }
 
     private fun restoreSelectedPlayback() {

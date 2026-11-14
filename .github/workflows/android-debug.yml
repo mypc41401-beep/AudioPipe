@@ -86,7 +86,7 @@ jobs:
             echo "[Download APK ZIP]($APK_URL)"
             echo ""
             echo "Unzip the download and install app-debug.apk on Android."
-            echo "The Android job also checks real adbd pairing and a native UID policy on emulator earpiece/speaker endpoints. It does not test Bluetooth, Xiaomi hardware, or acoustic isolation."
+            echo "The Android job also checks real adbd pairing and a native UID policy on emulator virtual wired/speaker endpoints. It does not test Bluetooth, Xiaomi hardware, or acoustic isolation."
           } >> "$GITHUB_STEP_SUMMARY"
 
   android14-pairing:

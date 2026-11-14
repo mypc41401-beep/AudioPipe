@@ -85,7 +85,7 @@ class SoundMasterService : Service() {
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (mismatch && mismatchSince == 0L) mismatchSince = now
                 if (!mismatch) mismatchSince = 0L
-                check(mismatchSince == 0L || now - mismatchSince < 3500) {
+                check(mismatchSince == 0L || now - mismatchSince < 6500) {
                     "ROM did not keep the requested outputs: ${evidence.wrong} wrong, ${evidence.unknown} unknown. Split routing is unsupported or overridden with these devices."
                 }
                 val message = when {
@@ -97,7 +97,7 @@ class SoundMasterService : Service() {
                 if (message != lastMessage) RoutingDiagnostics.record(message)
                 lastMessage = message
                 updateNotification(message)
-                delay(1000)
+                delay(2500)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

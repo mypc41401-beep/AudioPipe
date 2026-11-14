@@ -9,6 +9,19 @@ import java.io.PrintWriter
 object NativePolicyFixture {
     @JvmStatic fun main(args: Array<String>) {
         Looper.prepareMainLooper()
+        if (args[0] == "wired") {
+            val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
+                .invoke(null, "audio")
+            val service = Class.forName("android.media.IAudioService\$Stub")
+                .getMethod("asInterface", android.os.IBinder::class.java).invoke(null, binder)
+            val attributes = Class.forName("android.media.AudioDeviceAttributes")
+            val endpoint = attributes.getConstructor(Int::class.javaPrimitiveType, String::class.java, String::class.java)
+                .newInstance(android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES, "", "CI virtual wired endpoint")
+            Class.forName("android.media.IAudioService").getMethod("setWiredDeviceConnectionState", attributes, Int::class.javaPrimitiveType, String::class.java)
+                .invoke(service, endpoint, args[1].toInt(), "com.android.shell")
+            println("WIRED_REQUESTED")
+            System.exit(0)
+        }
         Socket("127.0.0.1", args[0].toInt()).use { socket ->
             socket.soTimeout = 20000
             val input = socket.getInputStream().bufferedReader()

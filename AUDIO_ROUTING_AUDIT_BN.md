@@ -68,7 +68,7 @@ grant করা হয় না। Xiaomi firmware-এ এই API/permission/HAL s
 - `RouteDaemon.java` ও `RouteSession.kt`: APK-এর helper-কে local ADB দিয়ে launch;
   loopback-only random endpoint, 256-bit authentication token, bounded messages,
   timeouts ও heartbeat। Arbitrary shell command দেওয়ার network interface নেই।
-- Original playback configuration-এর UID ও actual device IDs shell দিয়ে query
+- Original playback UID এবং native audio-policy current-output/client dump মিলিয়ে actual device IDs query
   করা হয়। দুই app active না হলে শুধু **Policy accepted; split not yet observed**।
   Wrong/unknown device দীর্ঘস্থায়ী হলে error দিয়ে policy সরানো হয়।
 - Accepted configuration-কে physical listening-test success বলা হয় না।
@@ -77,7 +77,7 @@ grant করা হয় না। Xiaomi firmware-এ এই API/permission/HAL s
 - User-started `specialUse` foreground service ও Stop notification। PCM worker,
   MediaProjection, AudioRecord ও replay AudioTrack active পথে নেই। RECORD_AUDIO ও
   mediaProjection service permission বাদ; specialUse FGS permission যোগ হয়েছে।
-- পুরোনো capture classes মুছে ফেলা হয়নি; নতুন service সেগুলো call করে না। Capture
+- পুরোনো file paths রাখা হয়েছে; unsafe capture backend একটি disabled historical stub। Capture
   volume/balance/EQ controls direct routing-এর controls হিসেবে দেখানো হয় না।
 - Multi-focus আগের অবস্থায় restore করা হয়। Helper crash/kill হলে pending recovery
   ADB reconnect-এর পরে চলে। ফোন reboot/force-stop/ADB বন্ধ অবস্থায় অবিলম্বে recovery
@@ -100,7 +100,7 @@ snapshot battery benchmark বা দীর্ঘসময় stability test-এর
 GitHub Actions Java 17 / Gradle 8.9 / SDK 34 ব্যবহার করে APK, JVM tests ও lint চালায়।
 API-34 secure emulator-এ আগের real adbd pairing/authentication test রাখা হয়েছে।
 নতুন native policy test ordinary app-এর **original AudioTrack**-কে emulator-এর
-speaker থেকে earpiece-এ policy দিয়ে সরানো, route observation, explicit-device
+virtual wired output থেকে speaker-এ policy দিয়ে সরানো, route observation, explicit-device
 মিসম্যাচ, UI background/recreation এবং cleanup/focus restoration পরীক্ষা করে।
 এতে Bluetooth HAL, X-906, Redmi acoustic output বা দুই physical output-এর isolation
 পরীক্ষা হয় না। CI result না দেখে planned test-কে passed ধরা যাবে না।
@@ -159,3 +159,14 @@ speaker অন্য app-এর জন্য রাখা বাস্তব ব
 - [Android audio focus](https://developer.android.com/media/optimize/audio-focus)
 - [Android 14 FGS types](https://developer.android.com/about/versions/14/changes/fgs-types-required)
 - [Xiaomi Sound Assistant](https://www.mi.com/uk/support/article/KA-08490/)
+
+### Route observation-এর অতিরিক্ত সতর্কতা
+
+`AudioPlaybackConfiguration.getAudioDeviceInfo()` Android-এর কিছু version-এ populated
+হয় না; newer official docs-ও এ সীমা জানিয়েছে। তাই এটি success-এর ভিত্তি নয়। Helper
+Android 14 native audio-policy dump-এর **current Devices + active AudioTrack clients**
+পড়ে UID/session মিলিয়ে device port ID বের করে; Preferred Device field উপেক্ষা করে।
+Raw dump-এ MAC থাকতে পারে, তাই সেটি memory-তেই parse হয়, report-এ পাঠানো হয় না।
+Unsupported OEM dump format, ambiguous/multiple outputs বা unmapped active player
+হলে unknown/error দেখায়। প্রায় ২.৫ সেকেন্ড অন্তর bounded observation হয়; এটি
+তাৎক্ষণিক audio leak prevention বা physical acoustic proof নয়।

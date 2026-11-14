@@ -12,6 +12,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.ArrayList;
+import java.io.ByteArrayOutputStream;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Actual framework RENDER policies, executed ONLY by a separately launched ADB shell process.
@@ -25,6 +31,9 @@ public final class AudioRoutePolicy implements AutoCloseable {
     private final AudioDeviceInfo selectedDevice;
     private final AudioDeviceInfo speaker;
     private Boolean originalMultiFocus;
+    private final ExecutorService dumpReader = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "AudioPipe-policy-observer"); t.setDaemon(true); return t;
+    });
 
     public AudioRoutePolicy(int uid, AudioDeviceInfo selected, AudioDeviceInfo builtIn) throws Exception {
         if (Process.myUid() != 2000 && Process.myUid() != 0) {
@@ -99,27 +108,34 @@ public final class AudioRoutePolicy implements AutoCloseable {
     }
 
     public void setMultiFocus(boolean enabled) throws Exception {
-        service.getClass().getMethod("setMultiAudioFocusEnabled", boolean.class).invoke(service, enabled);
+        Class.forName("android.media.IAudioService").getMethod("setMultiAudioFocusEnabled", boolean.class).invoke(service, enabled);
     }
 
     public JSONObject observe() throws Exception {
         // QUERY_AUDIO_STATE is held by AOSP shell. Ordinary APK callers receive anonymized UIDs;
         // never interpret that redacted data as evidence of successful per-app routing.
         @SuppressWarnings("unchecked") List<AudioPlaybackConfiguration> players =
-                (List<AudioPlaybackConfiguration>) service.getClass()
+                (List<AudioPlaybackConfiguration>) Class.forName("android.media.IAudioService")
                         .getMethod("getActivePlaybackConfigurations").invoke(service);
         Method uidMethod = AudioPlaybackConfiguration.class.getMethod("getClientUid");
         Method activeMethod = AudioPlaybackConfiguration.class.getMethod("isActive");
-        JSONArray observations = new JSONArray();
+        JSONArray observations = NativeRoutes.parse(nativeDump(), nativeDevices(), selectedUid,
+                selectedDevice.getId(), speaker.getId());
         for (AudioPlaybackConfiguration player : players) {
             if (!(Boolean) activeMethod.invoke(player)
                     || !isMediaUsage(player.getAudioAttributes().getUsage())) continue;
             int uid = (Integer) uidMethod.invoke(player);
             if (uid < 0) throw new SecurityException("Shell playback UIDs are redacted; cannot verify routing");
-            AudioDeviceInfo actual = player.getAudioDeviceInfo();
-            int expected = uid == selectedUid ? selectedDevice.getId() : speaker.getId();
-            observations.put(new JSONObject().put("uid", uid)
-                    .put("expected", expected).put("actual", actual == null ? -1 : actual.getId()));
+            int sessionId = (Integer) AudioPlaybackConfiguration.class.getMethod("getSessionId").invoke(player);
+            boolean mapped = false;
+            for (int i = 0; i < observations.length(); i++) {
+                JSONObject nativePlayer = observations.getJSONObject(i);
+                mapped |= nativePlayer.getInt("uid") == uid
+                        && (sessionId <= 0 || nativePlayer.getInt("session") == sessionId);
+            }
+            if (!mapped) observations.put(new JSONObject().put("uid", uid).put("session", sessionId)
+                    .put("expected", uid == selectedUid ? selectedDevice.getId() : speaker.getId())
+                    .put("actual", -1).put("source", "unmapped_active_player"));
         }
         boolean selectedAvailable = false, speakerAvailable = false;
         for (AudioDeviceInfo d : outputs()) {
@@ -127,8 +143,44 @@ public final class AudioRoutePolicy implements AutoCloseable {
             speakerAvailable |= d.getId() == speaker.getId();
         }
         return new JSONObject().put("type", "status").put("players", observations)
+                .put("routeSource", "native_audio_policy_current_output_clients")
+                .put("helperCpuMillis", Process.getElapsedCpuTime())
                 .put("devicesAvailable", selectedAvailable && speakerAvailable)
                 .put("selectedDevice", selectedDevice.getId()).put("speakerDevice", speaker.getId());
+    }
+
+    private String nativeDump() throws Exception {
+        java.lang.Process child = new ProcessBuilder("/system/bin/dumpsys", "-t", "2", "media.audio_policy")
+                .redirectErrorStream(true).start();
+        Future<String> result = dumpReader.submit(() -> {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            for (int n; (n = child.getInputStream().read(buffer)) != -1;) {
+                if (bytes.size() + n > 1024 * 1024) throw new IllegalStateException("Native audio-policy dump exceeded limit");
+                bytes.write(buffer, 0, n);
+            }
+            return bytes.toString("UTF-8");
+        });
+        try { return result.get(3, TimeUnit.SECONDS); }
+        finally { child.destroy(); child.waitFor(100, TimeUnit.MILLISECONDS); result.cancel(true); }
+    }
+
+    private List<NativeRoutes.Device> nativeDevices() throws Exception {
+        List<NativeRoutes.Device> list = new ArrayList<>();
+        Class<?> system = Class.forName("android.media.AudioSystem");
+        String[] types = {"EARPIECE", "SPEAKER", "WIRED_HEADSET", "WIRED_HEADPHONE", "BLUETOOTH_A2DP",
+                "BLUETOOTH_A2DP_HEADPHONES", "BLUETOOTH_A2DP_SPEAKER", "BLE_HEADSET", "BLE_SPEAKER",
+                "USB_HEADSET", "USB_DEVICE", "USB_ACCESSORY", "HDMI", "HDMI_ARC", "HDMI_EARC", "REMOTE_SUBMIX"};
+        for (AudioDeviceInfo d : outputs()) {
+            int internal = (Integer) AudioDeviceInfo.class.getMethod("getInternalType").invoke(d);
+            for (String type : types) {
+                try {
+                    if (system.getField("DEVICE_OUT_" + type).getInt(null) == internal)
+                        list.add(new NativeRoutes.Device(d.getId(), "AUDIO_DEVICE_OUT_" + type, d.getAddress()));
+                } catch (NoSuchFieldException ignored) { /* not present on this framework */ }
+            }
+        }
+        return list;
     }
 
     @Override public void close() throws Exception {
@@ -140,10 +192,9 @@ public final class AudioRoutePolicy implements AutoCloseable {
                         Class.forName("android.media.audiopolicy.AudioPolicy")).invoke(null, old);
             }
         } finally {
-            if (originalMultiFocus != null) {
-                setMultiFocus(originalMultiFocus);
-                originalMultiFocus = null;
-            }
+            try {
+                if (originalMultiFocus != null) { setMultiFocus(originalMultiFocus); originalMultiFocus = null; }
+            } finally { dumpReader.shutdownNow(); }
         }
     }
 }

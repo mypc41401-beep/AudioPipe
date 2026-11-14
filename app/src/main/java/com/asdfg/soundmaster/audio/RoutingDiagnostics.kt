@@ -75,6 +75,8 @@ object RoutingDiagnostics {
         val safe = JSONObject().put("devicesAvailable", status.optBoolean("devicesAvailable"))
             .put("selectedDevice", status.optInt("selectedDevice", -1))
             .put("speakerDevice", status.optInt("speakerDevice", -1))
+            .put("routeSource", status.optString("routeSource"))
+            .put("helperCpuMillis", status.optLong("helperCpuMillis", -1))
             .put("players", status.optJSONArray("players") ?: JSONArray()).toString()
         lastObservation = safe
         observationTime = Instant.now().toString()
