@@ -31,8 +31,13 @@ grep -q 'Multi Audio Focus enabled.*true' "$logs/audio-before-tests.txt"
 expected=$(cut -d ' ' -f 1 delivered-apk/app-debug.apk.sha256)
 actual=$(sha256sum delivered-apk/app-debug.apk | cut -d ' ' -f 1)
 [ "$expected" = "$actual" ]
-adb uninstall com.asdfg.soundmaster.test
-adb uninstall com.asdfg.soundmaster
+# UTP may already uninstall its fixture packages after the suite.
+for package in com.asdfg.soundmaster.test com.asdfg.soundmaster; do
+  if adb shell pm path "$package" | grep -q '^package:'; then
+    adb shell am force-stop "$package"
+    adb uninstall "$package"
+  fi
+done
 adb install --no-streaming delivered-apk/app-debug.apk
 adb shell pm grant com.asdfg.soundmaster android.permission.POST_NOTIFICATIONS
 adb shell am start -W -n com.asdfg.soundmaster/.MainActivity | tee "$logs/delivered-apk-launch.txt"
