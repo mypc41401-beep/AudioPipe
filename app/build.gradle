@@ -3,6 +3,14 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Robolectric runs on a Linux JVM, so it needs Conscrypt's JVM native library.
+// Keep the Android AAR (and its Android ABIs) in the production APK.
+configurations.matching { it.name.contains('UnitTest') }.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute module('org.conscrypt:conscrypt-android') using module('org.conscrypt:conscrypt-openjdk-uber:2.9.0')
+    }
+}
+
 android {
     namespace 'com.asdfg.soundmaster'
     compileSdk 34
@@ -43,8 +51,8 @@ android {
         jvmTarget = '17'
     }
 
-    // Native pairing is not built here. SPAKE2 uses the pure-Java implementation;
-    // bundled Conscrypt supplies a public TLS exporter without hidden Android APIs.
+    // Use the upstream Android SPAKE2 AAR; no local CMake/BoringSSL build is needed.
+    // Bundled Conscrypt supplies a public TLS exporter without hidden Android APIs.
     // externalNativeBuild {
     //     cmake {
     //         path file("src/main/jni/CMakeLists.txt")
@@ -80,7 +88,7 @@ dependencies {
     // BouncyCastle for RSA key generation
     implementation 'org.bouncycastle:bcprov-jdk18on:1.77'
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.77'
-    implementation 'com.github.MuntashirAkon.spake2-java:spake2-java:2.2.1'
+    implementation 'com.github.MuntashirAkon.spake2-java:spake2-android:2.2.1'
     implementation 'org.conscrypt:conscrypt-android:2.9.0'
 
     testImplementation 'junit:junit:4.13.2'

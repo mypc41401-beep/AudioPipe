@@ -79,7 +79,7 @@ internal object AdbPairingProtocol {
 
     fun exchange(input: DataInputStream, output: DataOutputStream, password: ByteArray, publicKey: ByteArray) {
         require(publicKey.size in 1 until PEER_SIZE) { "Invalid ADB public key size" }
-        val spake = Spake2Context(Spake2Role.Alice, clientName, serverName)
+        val spake = Spake2Context(Spake2Role.Alice, clientName.clone(), serverName.clone())
         var secret: ByteArray? = null
         var shared: ByteArray? = null
         try {
