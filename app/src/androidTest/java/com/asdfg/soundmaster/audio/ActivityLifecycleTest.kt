@@ -25,13 +25,14 @@ class ActivityLifecycleTest {
         val device = UiDevice.getInstance(instrumentation)
         // This fixture launches the real production helper via emulator shell. It grants no
         // routing permission to the APK. Real Wireless ADB authentication has a separate test.
-        val session = RouteSession(context) { command -> runCatching { device.executeShellCommand(command) } }
+        val session = RouteSession(context) { command -> runCatching { ShellFixture.run(command) } }
         try {
             val result = runCatching { session.start(context.applicationInfo.uid, -98765, true) }
             assertTrue(result.isFailure)
             assertTrue("Must report the actual missing-device error: ${result.exceptionOrNull()}",
                 result.exceptionOrNull()?.message.orEmpty().contains("Bluetooth"))
         } finally {
+            assertTrue("Production helper must acknowledge cleanup", session.stopAndAwait())
             session.close()
             // No policy/focus change occurred: the production daemon rejected the absent device.
             context.getSharedPreferences(RouteSession.PREFS, Context.MODE_PRIVATE).edit()

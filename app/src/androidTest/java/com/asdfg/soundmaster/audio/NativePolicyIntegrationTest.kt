@@ -32,7 +32,7 @@ class NativePolicyIntegrationTest {
         device.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
         val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val apk = context.applicationInfo.sourceDir + ":" + instrumentation.context.applicationInfo.sourceDir
-        fun wired(state: Int) = device.executeShellCommand("CLASSPATH=${RouteSession.quote(apk)} " +
+        fun wired(state: Int) = ShellFixture.run("CLASSPATH=${RouteSession.quote(apk)} " +
             "/system/bin/app_process /system/bin com.asdfg.soundmaster.audio.NativePolicyFixture wired $state")
         check(wired(1).contains("WIRED_REQUESTED")) { "Could not create emulator wired test endpoint" }
         await("Emulator wired endpoint did not become available") {
@@ -60,7 +60,7 @@ class NativePolicyIntegrationTest {
             ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
                 server.soTimeout = 20000
                 val token = UUID.randomUUID().toString()
-                device.executeShellCommand("(trap '' HUP; CLASSPATH=${RouteSession.quote(apk)} " +
+                ShellFixture.run("(trap '' HUP; CLASSPATH=${RouteSession.quote(apk)} " +
                     "/system/bin/app_process /system/bin com.asdfg.soundmaster.audio.NativePolicyFixture " +
                     "${server.localPort} $token ${context.applicationInfo.uid} ${target.id} ${initial.id} " +
                     "${if (originalEnabled) 1 else 0} </dev/null >/dev/null 2>&1 &)")

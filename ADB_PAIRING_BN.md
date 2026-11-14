@@ -1,5 +1,9 @@
 # AudioPipe 1.1: ফোন থেকে ADB pairing
 
+> **বর্তমান routing build:** 1.2-তে ADB pairing একই আছে; capture/replay বদলে shell
+> UID policy ও diagnostics যোগ হয়েছে। বর্তমান APK/অনুমতি/ফোনের audio test-এর জন্য
+> [routing audit](AUDIO_ROUTING_AUDIT_BN.md) পড়ো। নিচের 1.1 build results ঐতিহাসিক।
+
 এই পরিবর্তন AudioPipe-এর ADB setup/authentication-এর জন্য। `audio/`-এর capture ও routing
 algorithm অপরিবর্তিত। নিজের Xiaomi/Bluetooth ফোনে পরীক্ষা হয়নি। ADB connection সফল
 হওয়া split audio কাজ করার প্রমাণ নয়।

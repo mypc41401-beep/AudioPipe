@@ -66,6 +66,10 @@ public final class RouteDaemon {
                 if (speaker == null) throw new IllegalStateException("Built-in speaker output is unavailable");
                 route = new AudioRoutePolicy(uid, target, speaker);
                 route.install(request.getBoolean("simultaneous"), request.getBoolean("originalFocus"));
+                // A connected idle control socket is not a lost client. Let Android suspend the
+                // CPU during offloaded music without tearing down a valid policy. Process death
+                // closes the socket (EOF); explicit Stop awaits cleanup. No polling wake lock.
+                control.setSoTimeout(0);
                 out.println(new JSONObject().put("type", "installed").put("device", target.getProductName()));
                 while (true) {
                     String command = read(in);

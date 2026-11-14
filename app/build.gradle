@@ -22,6 +22,7 @@ android {
         versionCode 3
         versionName "1.2-uid-routing-test"
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        testInstrumentationRunnerArguments timeout_msec: '90000'
 
         // NDK disabled for now
         // ndk {

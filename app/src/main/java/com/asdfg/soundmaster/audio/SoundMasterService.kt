@@ -94,9 +94,11 @@ class SoundMasterService : Service() {
                     else -> "Policy accepted; split not yet observed. Selected app: ${evidence.selected} active player(s); other apps: ${evidence.others}. Play both apps."
                 }
                 mutableState.value = installed.copy(message = message, bothObserved = evidence.bothObserved)
-                if (message != lastMessage) RoutingDiagnostics.record(message)
+                if (message != lastMessage) {
+                    RoutingDiagnostics.record(message)
+                    updateNotification(message)
+                }
                 lastMessage = message
-                updateNotification(message)
                 delay(2500)
             }
         } catch (cancelled: CancellationException) {
@@ -104,9 +106,11 @@ class SoundMasterService : Service() {
         } catch (error: Exception) {
             finalMessage = "Stopped: ${error.message?.take(600)}\nAndroid default routing restored; split audio is not active."
         } finally {
-            route.close()
-            session = null
             withContext(NonCancellable + Dispatchers.IO) {
+                val acknowledged = route.stopAndAwait()
+                route.close()
+                session = null
+                if (!acknowledged) finalMessage = "Stopped controlling audio; native policy cleanup was not acknowledged. Reconnect ADB and export diagnostics."
                 val restored = RouteSession.restoreFocusIfNeeded(applicationContext)
                 if (restored.isFailure) finalMessage += "\nReconnect ADB to restore the previous multi-audio-focus setting."
                 mutableState.value = RoutingState(packageName = pkg, deviceId = deviceId,
@@ -137,8 +141,10 @@ class SoundMasterService : Service() {
 
     override fun onDestroy() {
         RoutingDiagnostics.record("Routing foreground service destroyed; closing shell control socket")
-        session?.close()
+        if (task?.isActive == true && running) mutableState.value = mutableState.value.copy(active = false, busy = true,
+            message = "Stopping policy and restoring the previous audio-focus setting…")
         task?.cancel()
+        session?.cancelStart()
         scope.cancel()
         if (task == null) mutableState.value = mutableState.value.copy(active = false, busy = false)
         super.onDestroy()

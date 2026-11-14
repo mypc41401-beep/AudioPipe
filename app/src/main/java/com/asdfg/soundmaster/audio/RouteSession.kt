@@ -24,6 +24,7 @@ class RouteSession(private val context: Context,
     @Volatile private var listener: ServerSocket? = null
     private lateinit var input: BufferedReader
     private lateinit var output: PrintWriter
+    @Volatile private var configSent = false
 
     suspend fun start(uid: Int, deviceId: Int, simultaneous: Boolean): String {
         val original = execute("settings get system multi_audio_focus_enabled").getOrThrow().trim()
@@ -56,6 +57,7 @@ class RouteSession(private val context: Context,
                         && MessageDigest.isEqual(token.toByteArray(), hello.optString("token").toByteArray())
                     if (!authorized) { candidate.close(); continue }
                     socket = candidate
+                    candidate.soTimeout = 8000
                     input = reader
                     output = PrintWriter(candidate.getOutputStream().writer(Charsets.UTF_8), true)
                 } catch (_: Exception) { candidate.close() }
@@ -63,6 +65,8 @@ class RouteSession(private val context: Context,
             check(socket != null) {
                 "ADB helper did not start within 15 seconds. This ROM may block app_process or reading the installed APK."
             }
+            currentCoroutineContext().ensureActive()
+            configSent = true
             output.println(JSONObject().put("token", token).put("appUid", uid)
                 .put("deviceId", deviceId).put("simultaneous", simultaneous)
                 .put("originalFocus", originalFocus).toString())
@@ -86,6 +90,20 @@ class RouteSession(private val context: Context,
             error(it.optString("message", "Audio policy failed"))
         }
     }
+
+    fun stopAndAwait(): Boolean {
+        if (!configSent || socket == null) return true
+        return runCatching {
+            socket?.soTimeout = 5000
+            output.println("stop")
+            val stopped = response().optString("type") == "stopped"
+            if (stopped) context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .remove(RESTORE_FOCUS).commit()
+            stopped
+        }.getOrDefault(false)
+    }
+
+    fun cancelStart() { runCatching { listener?.close() } }
 
     fun close() {
         // EOF also removes the policy if the app process is killed or the task is stopped.
