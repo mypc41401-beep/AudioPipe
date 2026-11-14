@@ -22,14 +22,17 @@ the developer. An accepted policy, APK build, or preferred-device request is not
   status from empty spinner selections. Stop/process death returns control to Android's default routing.
 - Local diagnostic export includes output IDs, observations, lifecycle/errors, and CPU/heap snapshots;
   it omits ADB keys, pairing codes, control tokens, MACs and the installed-app list. No automatic upload.
-- Multi-audio-focus is enabled temporarily and restored on Stop, with recovery after reconnect if needed.
+- Simultaneous media requires Android multi-audio-focus. If Start asks for it, use **Enable simultaneous
+  media**, reboot once, re-enable Wireless debugging and reconnect. This is a persistent system option;
+  **Restore normal audio focus** plus reboot undoes it. Stop only removes the routing policy.
+  The live API is deliberately avoided: API-34 shell calls reproduce a system settings identity error.
   Calls, transient focus and applications that pause themselves remain limitations.
 
 ## Install and test
 
 Download **AudioPipe-debug** from a successful GitHub Actions run, extract its ZIP and install
 `app-debug.apk`. Pair AudioPipe itself, connect Bluetooth Media audio, select BitChord and X-906,
-then Start **before** playing the two apps. Follow the Bengali guide's listening test and export logs.
+enable simultaneous media and reboot if requested, then Start **before** playing the two apps. Follow the Bengali guide's listening test and export logs.
 A new CI debug signing key may require uninstalling the previous test APK and pairing again.
 
 Legacy file paths are retained; the unsafe capture worker is disabled. `AudioPlayer` is unused. Its volume/balance/EQ

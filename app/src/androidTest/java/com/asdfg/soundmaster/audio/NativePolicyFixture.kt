@@ -19,7 +19,7 @@ object NativePolicyFixture {
                 val selected = devices.first { it.id == args[3].toInt() }
                 val speaker = devices.first { it.id == args[4].toInt() }
                 policy = AudioRoutePolicy(args[2].toInt(), selected, speaker)
-                policy.install(true, args[5] == "1")
+                policy.install(true)
                 output.println("READY ${args[1]} ${Process.myUid()}")
                 while (input.readLine() == "status") output.println(policy.observe().toString())
             } catch (e: Throwable) {

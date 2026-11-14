@@ -29,14 +29,6 @@ public final class RouteDaemon {
     public static void main(String[] args) throws Exception {
         if (Process.myUid() != 2000 && Process.myUid() != 0) throw new SecurityException("ADB shell required");
         Looper.prepareMainLooper();
-        if (args.length == 2 && "restore-focus".equals(args[0])) {
-            AudioDeviceInfo[] ds = AudioRoutePolicy.outputs();
-            if (ds.length == 0) throw new IllegalStateException("No audio outputs");
-            new AudioRoutePolicy(10000, ds[0], ds[0]).setMultiFocus("1".equals(args[1]));
-            System.out.println("FOCUS_RESTORED");
-            System.exit(0);
-            return;
-        }
         if (args.length != 2 || !args[1].matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("Invalid control endpoint");
         }
@@ -65,7 +57,7 @@ public final class RouteDaemon {
                 if (target == null) throw new IllegalStateException("Selected Bluetooth media output disconnected. Reconnect and select it again.");
                 if (speaker == null) throw new IllegalStateException("Built-in speaker output is unavailable");
                 route = new AudioRoutePolicy(uid, target, speaker);
-                route.install(request.getBoolean("simultaneous"), request.getBoolean("originalFocus"));
+                route.install(request.getBoolean("simultaneous"));
                 // A connected idle control socket is not a lost client. Let Android suspend the
                 // CPU during offloaded music without tearing down a valid policy. Process death
                 // closes the socket (EOF); explicit Stop awaits cleanup. No polling wake lock.

@@ -27,16 +27,6 @@ class RouteSession(private val context: Context,
     @Volatile private var configSent = false
 
     suspend fun start(uid: Int, deviceId: Int, simultaneous: Boolean): String {
-        val original = execute("settings get system multi_audio_focus_enabled").getOrThrow().trim()
-        require(original == "0" || original == "1" || original == "null") {
-            "Could not read Android multi-audio-focus state: $original"
-        }
-        val originalFocus = original == "1"
-        if (simultaneous && !originalFocus) {
-            // Recover even if the shell helper is killed without running its finally block.
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putBoolean(RESTORE_FOCUS, true).commit()
-        }
         val tokenBytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
         val token = tokenBytes.joinToString("") { "%02x".format(it.toInt() and 255) }
         val server = ServerSocket(0, 2, InetAddress.getByName("127.0.0.1"))
@@ -68,8 +58,7 @@ class RouteSession(private val context: Context,
             currentCoroutineContext().ensureActive()
             configSent = true
             output.println(JSONObject().put("token", token).put("appUid", uid)
-                .put("deviceId", deviceId).put("simultaneous", simultaneous)
-                .put("originalFocus", originalFocus).toString())
+                .put("deviceId", deviceId).put("simultaneous", simultaneous).toString())
             val result = response()
             check(result.optString("type") == "installed") { "Audio policy was not installed: $result" }
             return result.getString("device")
@@ -97,8 +86,6 @@ class RouteSession(private val context: Context,
             socket?.soTimeout = 5000
             output.println("stop")
             val stopped = response().optString("type") == "stopped"
-            if (stopped) context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .remove(RESTORE_FOCUS).commit()
             stopped
         }.getOrDefault(false)
     }
@@ -115,7 +102,6 @@ class RouteSession(private val context: Context,
 
     companion object {
         const val PREFS = "routing_settings"
-        private const val RESTORE_FOCUS = "restore_multi_focus"
         private const val ENTRY = "com.asdfg.soundmaster.audio.RouteDaemon"
 
         fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
@@ -137,14 +123,5 @@ class RouteSession(private val context: Context,
             error("Audio helper response exceeded the limit")
         }
 
-        suspend fun restoreFocusIfNeeded(context: Context): Result<Unit> = runCatching {
-            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            if (!prefs.getBoolean(RESTORE_FOCUS, false)) return@runCatching
-            val reply = ShellExecutor.getInstance(context).commandSync(
-                "CLASSPATH=${quote(context.applicationInfo.sourceDir)} /system/bin/app_process /system/bin $ENTRY restore-focus 0"
-            ).getOrThrow()
-            check(reply.contains("FOCUS_RESTORED")) { "Multi-audio-focus restoration failed: ${reply.take(200)}" }
-            prefs.edit().remove(RESTORE_FOCUS).commit()
-        }
     }
 }

@@ -30,7 +30,6 @@ public final class AudioRoutePolicy implements AutoCloseable {
     private final int selectedUid;
     private final AudioDeviceInfo selectedDevice;
     private final AudioDeviceInfo speaker;
-    private Boolean originalMultiFocus;
     private final ExecutorService dumpReader = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "AudioPipe-policy-observer"); t.setDaemon(true); return t;
     });
@@ -58,7 +57,10 @@ public final class AudioRoutePolicy implements AutoCloseable {
                 || usage == AudioAttributes.USAGE_UNKNOWN;
     }
 
-    public void install(boolean simultaneousMedia, boolean originalFocus) throws Exception {
+    public void install(boolean simultaneousMedia) throws Exception {
+        if (simultaneousMedia && !NativeRoutes.multiFocusEnabled(dumpService("audio"))) {
+            throw new IllegalStateException("Simultaneous media is not enabled in Android. Stop, tap Enable simultaneous media, then restart the phone and reconnect ADB before Start.");
+        }
         Class<?> builderClass = Class.forName("android.media.audiopolicy.AudioPolicy$Builder");
         Object builder = builderClass.getConstructor(Context.class).newInstance((Object) null);
         Class<?> mixClass = Class.forName("android.media.audiopolicy.AudioMix");
@@ -78,12 +80,6 @@ public final class AudioRoutePolicy implements AutoCloseable {
                     + "). Shell permission or this ROM's Bluetooth/speaker outputs are unsupported.");
         }
         policy = candidate;
-        if (simultaneousMedia && !originalFocus) {
-            // Android's hidden multi-focus handles AUDIOFOCUS_GAIN. Transient focus/calls can
-            // still interrupt media; this is not a promise to force every third-party app to play.
-            originalMultiFocus = false;
-            setMultiFocus(true);
-        }
     }
 
     private Object makeMix(AudioDeviceInfo device, boolean excludeSelected) throws Exception {
@@ -109,10 +105,6 @@ public final class AudioRoutePolicy implements AutoCloseable {
         return mb.getMethod("build").invoke(mix);
     }
 
-    public void setMultiFocus(boolean enabled) throws Exception {
-        Class.forName("android.media.IAudioService").getMethod("setMultiAudioFocusEnabled", boolean.class).invoke(service, enabled);
-    }
-
     public JSONObject observe() throws Exception {
         // QUERY_AUDIO_STATE is held by AOSP shell. Ordinary APK callers receive anonymized UIDs;
         // never interpret that redacted data as evidence of successful per-app routing.
@@ -121,7 +113,7 @@ public final class AudioRoutePolicy implements AutoCloseable {
                         .getMethod("getActivePlaybackConfigurations").invoke(service);
         Method uidMethod = AudioPlaybackConfiguration.class.getMethod("getClientUid");
         Method activeMethod = AudioPlaybackConfiguration.class.getMethod("isActive");
-        JSONArray observations = NativeRoutes.parse(nativeDump(), nativeDevices(), selectedUid,
+        JSONArray observations = NativeRoutes.parse(dumpService("media.audio_policy"), nativeDevices(), selectedUid,
                 selectedDevice.getId(), speaker.getId());
         for (AudioPlaybackConfiguration player : players) {
             if (!(Boolean) activeMethod.invoke(player)
@@ -151,8 +143,8 @@ public final class AudioRoutePolicy implements AutoCloseable {
                 .put("selectedDevice", selectedDevice.getId()).put("speakerDevice", speaker.getId());
     }
 
-    private String nativeDump() throws Exception {
-        java.lang.Process child = new ProcessBuilder("/system/bin/dumpsys", "-t", "2", "media.audio_policy")
+    private String dumpService(String serviceName) throws Exception {
+        java.lang.Process child = new ProcessBuilder("/system/bin/dumpsys", "-t", "2", serviceName)
                 .redirectErrorStream(true).start();
         Future<String> result = dumpReader.submit(() -> {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -197,10 +189,6 @@ public final class AudioRoutePolicy implements AutoCloseable {
                         Class.forName("android.media.audiopolicy.IAudioPolicyCallback"))
                         .invoke(service, callback);
             }
-        } finally {
-            try {
-                if (originalMultiFocus != null) { setMultiFocus(originalMultiFocus); originalMultiFocus = null; }
-            } finally { dumpReader.shutdownNow(); }
-        }
+        } finally { dumpReader.shutdownNow(); }
     }
 }

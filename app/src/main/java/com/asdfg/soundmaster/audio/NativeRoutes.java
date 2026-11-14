@@ -16,6 +16,11 @@ import java.util.regex.Pattern;
  * Raw dumps can contain MACs; they remain in helper memory and are never exported or logged.
  */
 public final class NativeRoutes {
+    public static boolean multiFocusEnabled(String dump) {
+        Matcher flag = Pattern.compile("Multi Audio Focus enabled\\s*:\\s*(true|false)").matcher(dump);
+        if (!flag.find()) throw new IllegalStateException("This ROM does not expose Android multi-audio-focus state; simultaneous playback cannot be confirmed");
+        return Boolean.parseBoolean(flag.group(1));
+    }
     public static final class Device {
         public final int id;
         public final String type, address;

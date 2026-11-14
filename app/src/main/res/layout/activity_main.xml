@@ -160,6 +160,20 @@
             android:text="Restore selected app playback (old PLAY_AUDIO deny)"
             style="@style/Widget.Material3.Button.TextButton" />
 
+        <Button
+            android:id="@+id/enableSimultaneousButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enable simultaneous media (then reboot)"
+            style="@style/Widget.Material3.Button.TonalButton" />
+
+        <Button
+            android:id="@+id/normalFocusButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Restore normal audio focus (then reboot)"
+            style="@style/Widget.Material3.Button.TextButton" />
+
         <!-- Start/Stop Button -->
         <Button
             android:id="@+id/startStopButton"

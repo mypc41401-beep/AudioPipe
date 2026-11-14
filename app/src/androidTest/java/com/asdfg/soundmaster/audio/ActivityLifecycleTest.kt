@@ -34,9 +34,6 @@ class ActivityLifecycleTest {
         } finally {
             assertTrue("Production helper must acknowledge cleanup", session.stopAndAwait())
             session.close()
-            // No policy/focus change occurred: the production daemon rejected the absent device.
-            context.getSharedPreferences(RouteSession.PREFS, Context.MODE_PRIVATE).edit()
-                .remove("restore_multi_focus").commit()
         }
     }
 

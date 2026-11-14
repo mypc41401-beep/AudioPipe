@@ -9,6 +9,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class NativeRoutesTest {
+    @Test fun `multi focus uses actual runtime state not a saved preference alone`() {
+        assertTrue(NativeRoutes.multiFocusEnabled("Multi Audio Focus enabled :true"))
+        assertFalse(NativeRoutes.multiFocusEnabled("Multi Audio Focus enabled :false"))
+        assertThrows(IllegalStateException::class.java) { NativeRoutes.multiFocusEnabled("Saved setting: 1") }
+    }
     private val devices = listOf(NativeRoutes.Device(2, "AUDIO_DEVICE_OUT_SPEAKER", ""),
         NativeRoutes.Device(20, "AUDIO_DEVICE_OUT_BLUETOOTH_A2DP", "12:34:56:78:9A:BC"))
     private fun dump(current: String, preferred: Int = 20, state: String = "Active") = """

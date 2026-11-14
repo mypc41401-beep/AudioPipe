@@ -60,7 +60,6 @@ class SoundMasterService : Service() {
         try {
             val uid = packageManager.getApplicationInfo(pkg, 0).uid
             require(uid >= 10000) { "Select an ordinary media app, not a system service." }
-            RouteSession.restoreFocusIfNeeded(applicationContext).getOrThrow()
             val oldOp = ShellExecutor.getInstance(this).commandSync(
                 "appops get ${RouteSession.quote(pkg)} PLAY_AUDIO").getOrThrow()
             check(!oldOp.contains("deny", true) && !oldOp.contains("ignore", true)) {
@@ -111,8 +110,6 @@ class SoundMasterService : Service() {
                 route.close()
                 session = null
                 if (!acknowledged) finalMessage = "Stopped controlling audio; native policy cleanup was not acknowledged. Reconnect ADB and export diagnostics."
-                val restored = RouteSession.restoreFocusIfNeeded(applicationContext)
-                if (restored.isFailure) finalMessage += "\nReconnect ADB to restore the previous multi-audio-focus setting."
                 mutableState.value = RoutingState(packageName = pkg, deviceId = deviceId,
                     deviceName = deviceName, message = finalMessage)
                 RoutingDiagnostics.record(finalMessage)
@@ -142,7 +139,7 @@ class SoundMasterService : Service() {
     override fun onDestroy() {
         RoutingDiagnostics.record("Routing foreground service destroyed; closing shell control socket")
         if (task?.isActive == true && running) mutableState.value = mutableState.value.copy(active = false, busy = true,
-            message = "Stopping policy and restoring the previous audio-focus setting…")
+            message = "Stopping the native audio policy…")
         task?.cancel()
         session?.cancelStart()
         scope.cancel()

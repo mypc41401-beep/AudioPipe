@@ -97,7 +97,21 @@ class AdbWirelessIntegrationTest {
             shell.pair(pairingPort.get(), checkNotNull(code.get())).getOrThrow()
             assertTrue(context.getSharedPreferences("adb_settings", Context.MODE_PRIVATE).getBoolean("adb_paired", false))
             assertNotEquals(pairingPort.get(), connectionPort)
-            shell.connectResult(connectionPort).getOrThrow()
+            // The fixture already knows the port, so it can race adbd's asynchronous key
+            // reload immediately after pairing. Only retry this specific readiness alert.
+            var connected: Result<Unit> = Result.failure(IllegalStateException("ADB not attempted"))
+            for (attempt in 0..3) {
+                connected = shell.connectResult(connectionPort)
+                if (connected.isSuccess) break
+                val failure = connected.exceptionOrNull()!!
+                if (failure !is javax.net.ssl.SSLException ||
+                    !failure.message.orEmpty().contains("CERTIFICATE_UNKNOWN", ignoreCase = true)) throw failure
+                if (attempt < 3) {
+                    println("Waiting for system adbd paired-key reload, attempt ${attempt + 1}")
+                    kotlinx.coroutines.delay(250L * (attempt + 1))
+                }
+            }
+            connected.getOrThrow()
             assertTrue(shell.isConnected)
             assertTrue(shell.state.value.connected)
             val uid = shell.commandSync("id -u").getOrThrow().trim()

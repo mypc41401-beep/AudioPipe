@@ -79,9 +79,10 @@ grant করা হয় না। Xiaomi firmware-এ এই API/permission/HAL s
   mediaProjection service permission বাদ; specialUse FGS permission যোগ হয়েছে।
 - পুরোনো file paths রাখা হয়েছে; unsafe capture backend একটি disabled historical stub। Capture
   volume/balance/EQ controls direct routing-এর controls হিসেবে দেখানো হয় না।
-- Multi-focus আগের অবস্থায় restore করা হয়। Helper crash/kill হলে pending recovery
-  ADB reconnect-এর পরে চলে। ফোন reboot/force-stop/ADB বন্ধ অবস্থায় অবিলম্বে recovery
-  সবসময় সম্ভব নয়; diagnostics-এ cleanup failure জানানো হয়।
+- Multi-focus runtime-এ চালু আছে কি না native helper যাচাই করে। প্রয়োজন হলে UI-র
+  Enable simultaneous media দিয়ে system setting save করে একবার phone reboot করতে
+  হবে। এটি persistent global setting; Stop সেটি বদলায় না। Undo করতে Restore normal
+  audio focus চাপার পরে reboot করতে হবে।
 - “Restore selected app playback” শুধু selected app-এর PLAY_AUDIO=allow করে। পুরোনো
   capture build-এর deny থাকলে এটি ব্যবহার করো; native routing mute hack ব্যবহার করে না।
 
@@ -100,7 +101,7 @@ snapshot battery benchmark বা দীর্ঘসময় stability test-এর
 GitHub Actions Java 17 / Gradle 8.9 / SDK 34 ব্যবহার করে APK, JVM tests ও lint চালায়।
 API-34 secure emulator-এ আগের real adbd pairing/authentication test রাখা হয়েছে।
 নতুন native policy test ordinary app-এর **original AudioTrack**-এর native route
-observation, policy registration, UI background/recreation এবং cleanup/focus restoration
+observation, policy registration, UI background/recreation এবং cleanup এবং focus setting অক্ষত থাকা
 পরীক্ষা করে। Emulator HAL দ্বিতীয় output না দিলে অন্য device-এ সরানোর test skipped
 থাকে; এটিকে successful split routing বলা যায় না।
 এতে Bluetooth HAL, X-906, Redmi acoustic output বা দুই physical output-এর isolation
@@ -186,3 +187,14 @@ Lint-এর hidden-API, self-signed ADB TLS trust-manager, dependency-version �
 warning-গুলো পূর্ণ security audit-এর বিকল্প নয়। ADB certificate trust সাধারণ web PKI-এর
 মতো নয়; শুধু নিজের ফোনের trusted debugging endpoint ব্যবহার করা উচিত। এই পরিবর্তন
 malware-free certification বা সব dependency-এর vulnerability scan নয়।
+
+## Android 14 live multi-focus API-এর পরীক্ষায় পাওয়া বাধা
+
+Real shell process থেকে `setMultiAudioFocusEnabled` ডাকলে API-34 system server-এ
+`SecurityException: Package android does not belong to 2000` পাওয়া গেছে। Method-টি
+oneway; caller success ধরে নিলেও Settings write অসম্পূর্ণ থাকতে পারে। তাই final
+implementation এই live setter ব্যবহার করে না। Rootless ADB settings command দিয়ে
+শুধু user-selected persistent option save হয়; reboot-এর পরে AudioService সেটি পড়ে।
+Helper `dumpsys audio`-র actual runtime flag পরীক্ষা করে, শুধু saved value-কে success
+ধরে না। CI-তেও setting save → emulator reboot → runtime flag check করা হয়।
+এটি একটি global media-focus preference; calls/transient focus-এর সব আচরণ বদলায় না।

@@ -26,7 +26,7 @@ import com.asdfg.soundmaster.MainActivity
  * if the HAL provides no second endpoint. Neither test is a Xiaomi/Bluetooth acoustic test. */
 @RunWith(AndroidJUnit4::class)
 class NativePolicyIntegrationTest {
-    @Test fun realShellPolicyObservesOriginalTrackAndRestoresFocus() = exercisePolicy(false)
+    @Test fun realShellPolicyObservesOriginalTrackAndPreservesFocus() = exercisePolicy(false)
 
     @Test fun originalTrackChangesDeviceWhenSecondEndpointExists() = exercisePolicy(true)
 

@@ -39,7 +39,6 @@ class MainActivity : AppCompatActivity() {
     private var selectedApp: String? = null
     private var selectedOutput: AudioDeviceInfo? = null
     private var loadingSelections = false
-    private var recoveringFocus = false
     private val prefs by lazy { getSharedPreferences(RouteSession.PREFS, Context.MODE_PRIVATE) }
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) {
@@ -112,6 +111,8 @@ class MainActivity : AppCompatActivity() {
             else startRouting()
         }
         findViewById<Button>(R.id.restorePlaybackButton).setOnClickListener { restoreSelectedPlayback() }
+        findViewById<Button>(R.id.enableSimultaneousButton).setOnClickListener { saveMultiFocus(true) }
+        findViewById<Button>(R.id.normalFocusButton).setOnClickListener { saveMultiFocus(false) }
         findViewById<Button>(R.id.exportDiagnosticsButton).setOnClickListener {
             exportDiagnostics.launch("AudioPipe-diagnostics-${System.currentTimeMillis()}.txt")
         }
@@ -238,6 +239,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun saveMultiFocus(enabled: Boolean) {
+        if (SoundMasterService.running) return toast("Stop routing before changing the saved audio-focus option")
+        if (!shellExecutor.isConnected) return toast("Connect ADB first")
+        lifecycleScope.launch {
+            runCatching {
+                val value = if (enabled) "1" else "0"
+                val reply = shellExecutor.commandSync("settings put system multi_audio_focus_enabled $value").getOrThrow()
+                check(reply.isBlank()) { reply.take(200) }
+                check(shellExecutor.commandSync("settings get system multi_audio_focus_enabled").getOrThrow().trim() == value) {
+                    "Android did not save the audio-focus option"
+                }
+                val message = "Saved ${if (enabled) "simultaneous media" else "normal audio focus"}. Restart your phone, enable Wireless debugging and reconnect AudioPipe. This is a persistent system setting."
+                serviceStatus.text = message
+                RoutingDiagnostics.record(message)
+                toast(message)
+            }.onFailure { toast("Could not save audio-focus option: ${it.message}") }
+        }
+    }
+
     private fun render(state: SoundMasterService.RoutingState) {
         val running = state.active || state.busy
         serviceStatus.text = state.message
@@ -246,6 +266,8 @@ class MainActivity : AppCompatActivity() {
         appSpinner.isEnabled = !running
         outputSpinner.isEnabled = !running
         findViewById<Button>(R.id.restorePlaybackButton).isEnabled = !running
+        findViewById<Button>(R.id.enableSimultaneousButton).isEnabled = !running
+        findViewById<Button>(R.id.normalFocusButton).isEnabled = !running
         if (running) {
             val appIndex = installedApps.indexOfFirst { it.packageName == state.packageName }
             if (appIndex >= 0 && appSpinner.selectedItemPosition != appIndex) appSpinner.setSelection(appIndex)
@@ -263,15 +285,7 @@ class MainActivity : AppCompatActivity() {
             isEnabled = !state.busy
         }
         findViewById<Button>(R.id.importKeyButton).isEnabled = !state.busy
-        if (state.connected && !SoundMasterService.running && !recoveringFocus) {
-            recoveringFocus = true
-            lifecycleScope.launch {
-                RouteSession.restoreFocusIfNeeded(applicationContext).onFailure {
-                    toast("Reconnect ADB to restore the previous multi-audio-focus setting: ${it.message}")
-                }
-                recoveringFocus = false
-            }
-        }
+
     }
 
     private fun showAdbSetup() {
