@@ -66,7 +66,7 @@ public final class AudioRoutePolicy implements AutoCloseable {
         // Disjoint UID rules: original BitChord tracks -> selected device; every other media UID
         // -> speaker. New apps are covered without enumerating a finite list of installed UIDs.
         addMix.invoke(builder, makeMix(selectedDevice, false));
-        addMix.invoke(builder, makeMix(speaker, true));
+        if (selectedDevice.getId() != speaker.getId()) addMix.invoke(builder, makeMix(speaker, true));
         Object candidate = builderClass.getMethod("build").invoke(builder);
         Class<?> policyClass = Class.forName("android.media.audiopolicy.AudioPolicy");
         int result = (Integer) AudioManager.class.getMethod("registerAudioPolicyStatic", policyClass)

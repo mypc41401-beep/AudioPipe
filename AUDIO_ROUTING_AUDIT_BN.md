@@ -99,9 +99,10 @@ snapshot battery benchmark বা দীর্ঘসময় stability test-এর
 
 GitHub Actions Java 17 / Gradle 8.9 / SDK 34 ব্যবহার করে APK, JVM tests ও lint চালায়।
 API-34 secure emulator-এ আগের real adbd pairing/authentication test রাখা হয়েছে।
-নতুন native policy test ordinary app-এর **original AudioTrack**-কে emulator-এর
-virtual wired output থেকে speaker-এ policy দিয়ে সরানো, route observation, explicit-device
-মিসম্যাচ, UI background/recreation এবং cleanup/focus restoration পরীক্ষা করে।
+নতুন native policy test ordinary app-এর **original AudioTrack**-এর native route
+observation, policy registration, UI background/recreation এবং cleanup/focus restoration
+পরীক্ষা করে। Emulator HAL দ্বিতীয় output না দিলে অন্য device-এ সরানোর test skipped
+থাকে; এটিকে successful split routing বলা যায় না।
 এতে Bluetooth HAL, X-906, Redmi acoustic output বা দুই physical output-এর isolation
 পরীক্ষা হয় না। CI result না দেখে planned test-কে passed ধরা যাবে না।
 
@@ -170,3 +171,18 @@ Raw dump-এ MAC থাকতে পারে, তাই সেটি memory-ত
 Unsupported OEM dump format, ambiguous/multiple outputs বা unmapped active player
 হলে unknown/error দেখায়। প্রায় ২.৫ সেকেন্ড অন্তর bounded observation হয়; এটি
 তাৎক্ষণিক audio leak prevention বা physical acoustic proof নয়।
+
+## Permission/security সীমিত পর্যালোচনা
+
+বর্তমান manifest-এর চারটি Android permission: INTERNET, FOREGROUND_SERVICE,
+FOREGROUND_SERVICE_SPECIAL_USE এবং POST_NOTIFICATIONS। AndroidX নিজের signature-only
+receiver permission যোগ করে। Launcher intent queries দিয়ে app picker চলে;
+QUERY_ALL_PACKAGES, ACCESS_NETWORK_STATE, MODIFY_AUDIO_SETTINGS ও RECORD_AUDIO নেই।
+HTTP cleartext flag false, backup false। ADB/TLS ও authenticated loopback socket-এর
+কাজ অপরিবর্তিত; routing helper shell-এর identity ব্যবহার করে, APK privileged নয়।
+নতুন কোনো dependency বা analytics/upload endpoint যোগ হয়নি।
+
+Lint-এর hidden-API, self-signed ADB TLS trust-manager, dependency-version ও UI/resource
+warning-গুলো পূর্ণ security audit-এর বিকল্প নয়। ADB certificate trust সাধারণ web PKI-এর
+মতো নয়; শুধু নিজের ফোনের trusted debugging endpoint ব্যবহার করা উচিত। এই পরিবর্তন
+malware-free certification বা সব dependency-এর vulnerability scan নয়।

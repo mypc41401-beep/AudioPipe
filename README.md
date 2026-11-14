@@ -46,8 +46,8 @@ Java 17, Gradle wrapper 8.9, AGP 8.2, SDK 34:
 ```
 
 GitHub Actions builds/signs/verifies the debug APK, runs JVM tests and lint, installs and tests on a
-secure API-34 emulator, and records launch/memory/crash logs. Native policy tests use emulator
-virtual wired/speaker endpoints. They do **not** simulate or verify Xiaomi Bluetooth hardware isolation.
+secure API-34 emulator, and records launch/memory/crash logs. Native policy registration and original-player observation use the emulator speaker. A
+separate route-change test skips explicitly if the HAL has no second endpoint. They do **not** simulate or verify Xiaomi Bluetooth hardware isolation.
 No public release is published by the workflow.
 
 See [third-party notices](THIRD_PARTY_NOTICES.md). Earlier build reviews are historical; the current

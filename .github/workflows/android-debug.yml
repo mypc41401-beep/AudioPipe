@@ -86,11 +86,12 @@ jobs:
             echo "[Download APK ZIP]($APK_URL)"
             echo ""
             echo "Unzip the download and install app-debug.apk on Android."
-            echo "The Android job also checks real adbd pairing and a native UID policy on emulator virtual wired/speaker endpoints. It does not test Bluetooth, Xiaomi hardware, or acoustic isolation."
+            echo "The Android job also checks real adbd pairing and native UID policy registration and original-player observation. A second-device test can skip when the HAL has only one endpoint. It does not test Bluetooth, Xiaomi hardware, or acoustic isolation."
           } >> "$GITHUB_STEP_SUMMARY"
 
   android14-pairing:
     name: Android 14 ADB and native UID policy tests
+    needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -102,6 +103,11 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+      - name: Download the exact APK delivered to the user
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: AudioPipe-debug
+          path: delivered-apk
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -120,6 +126,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest
+            adb uninstall com.asdfg.soundmaster.test
+            adb uninstall com.asdfg.soundmaster
+            adb install --no-streaming delivered-apk/app-debug.apk
+            adb shell pm grant com.asdfg.soundmaster android.permission.POST_NOTIFICATIONS
             adb shell am start -W -n com.asdfg.soundmaster/.MainActivity
             mkdir -p app/build/runtime-logs
             adb shell dumpsys activity activities > app/build/runtime-logs/activities.txt
