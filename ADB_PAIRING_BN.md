@@ -4,6 +4,28 @@
 algorithm অপরিবর্তিত। নিজের Xiaomi/Bluetooth ফোনে পরীক্ষা হয়নি। ADB connection সফল
 হওয়া split audio কাজ করার প্রমাণ নয়।
 
+## যাচাইকৃত ফলাফল — ১৫ নভেম্বর ২০২৬
+
+- [সম্পূর্ণ সফল GitHub Actions run](https://github.com/mypc41401-beep/AudioPipe/actions/runs/43640973733)
+- [সংশোধিত APK ZIP](https://github.com/mypc41401-beep/AudioPipe/actions/runs/43640973733/artifacts/14131379395)
+- Build source: `59c90333184829b3e09bf8c3704a6a65926f924e`; version `1.1-adb-pairing` (code 2)।
+- APK compile, v2 signature ও download checksum যাচাই সফল; ১৩টি JVM unit test পাস।
+- Secure Android 14 emulator-এ ৬টি device test পাস: সঠিক/ভুল code, tampered response,
+  invalid peer/header, এবং আসল system pairing service/adbd-তে pairing/authentication।
+- বাস্তব adbd-তে `id -u` ফল `2000`; একই connection-এ পরপর shell command এবং encrypted
+  saved key থেকে নতুন executor দিয়ে reconnect সফল।
+- Remote stream বন্ধ হলে অতিরিক্ত CLSE পাঠানোর bug-ও ঠিক হয়েছে। পুরোনো closed stream-এর
+  দেরিতে আসা packet এখন পরের command নষ্ট করে না; regression test আছে।
+- CI-তে pairing service শুরু/তার code ও port পড়ার জন্য **test-only** shell fixture আছে।
+  উৎপাদনের pairing/client চালানোর আগে delegated shell permission drop করা হয়। এই fixture
+  app-debug.apk-তে নেই; ফোনের app hidden system API বা MANAGE_DEBUGGING permission চায় না।
+- Full Settings UI automation-কে সফল বলা হচ্ছে না। Pairing UI input validation JVM-এ
+  পরীক্ষা হয়েছে; নিজের Xiaomi-তে split-screen UI ও OEM networking এখনও পরীক্ষা করতে হবে।
+- Bluetooth + speaker simultaneous routing বাস্তব hardware-এ পরীক্ষা হয়নি।
+
+APK SHA-256: `ee79d44976b2682f5d33bd312a27d08372f0053b4122a0314cb260379e0fec4d`। ZIP প্রায় ১৩.২ MB; APK প্রায় ৩০.৮ MB;
+ARM64, ARMv7, x86 ও x86_64 library অন্তর্ভুক্ত। Artifact ১৪ দিন থাকে।
+
 ## পুরোনো Setup কেন ব্যর্থ হতো
 
 Setup বোতাম pairing করত না, শুধু retry করত। নতুন install-এ paired/imported key flag
@@ -69,7 +91,7 @@ Shizuku চলতে পারে, কিন্তু তার pairing বা p
 ## যাচাই এবং সীমাবদ্ধতা
 
 Unit tests socket AUTH, shell streams, timeout, mDNS failure/fallback, persisted state ও
-Setup input validation পরীক্ষা করে। Android integration tests আসল Android 14 Settings
+Setup input validation পরীক্ষা করে। Android integration tests আসল Android 14 system
 pairing server/adbd, TLS exporter, encrypted exchange ও saved identity দিয়ে reconnect
 পরীক্ষা করে; পাশাপাশি সঠিক/ভুল code ও tampered response-এর crypto tests আছে। Actions-এর
 সর্বশেষ ফলাফল দেখো—এই test description নিজে test পাস করার দাবি নয়।
@@ -86,7 +108,7 @@ app Bluetooth-এ রাখো; AudioPipe-তে দ্বিতীয় app ও b
 | Google Conscrypt Android 2.9.0 (Maven Central) | Public TLS exporter; hidden Android API bypass নয় |
 | SPAKE2 Android 2.2.1 (group-scoped JitPack) | Android/BoringSSL-compatible native SPAKE2 AAR |
 
-Unstable pure-Java SPAKE2 implementation ব্যবহার করা হয়নি। Upstream SPAKE2 library নিজেকে
+Android native SPAKE2 variant ব্যবহার করা হয়েছে; pure-Java variant ব্যবহার করা হয়নি। Upstream SPAKE2 library নিজেকে
 unaudited বলে; এই কাজ formal security audit নয়। JVM tests-এ শুধু Conscrypt-এর Linux
 variant ব্যবহার হয়; APK-তে Android variant থাকে। Existing Bouncy Castle 1.77 আপগ্রেড
 এই ADB fix-এর scope-এ করা হয়নি। Self-signed adbd TLS certificate সাধারণ web PKI দিয়ে
