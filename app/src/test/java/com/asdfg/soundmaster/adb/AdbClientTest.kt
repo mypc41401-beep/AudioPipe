@@ -29,7 +29,7 @@ class AdbClientTest {
         return AdbMessage(command, arg0, arg1, size, crc, magic, ByteArray(size).also(input::readFully))
     }
 
-    @Test fun `AUTH signature and two serialized commands use distinct stream IDs`() {
+    @Test fun `AUTH and consecutive commands tolerate a late close without sending duplicate closes`() {
         ServerSocket(0).use { server ->
             val executor = Executors.newSingleThreadExecutor()
             val peer = executor.submit {
@@ -51,12 +51,13 @@ class AdbClientTest {
                         val open = read(input)
                         assertEquals(AdbProtocol.A_OPEN, open.command)
                         assertTrue(open.arg0 > lastId)
+                        if (lastId > 0) send(AdbProtocol.A_CLSE, 0, lastId)
                         lastId = open.arg0
                         send(AdbProtocol.A_OKAY, 7, open.arg0)
                         send(AdbProtocol.A_WRTE, 7, open.arg0, "2000\n".toByteArray())
                         assertEquals(AdbProtocol.A_OKAY, read(input).command)
                         send(AdbProtocol.A_CLSE, 7, open.arg0)
-                        assertEquals(AdbProtocol.A_CLSE, read(input).command)
+                        // Remote CLSE needs no reply; the next packet must be the next OPEN.
                     }
                 }
             }

@@ -93,15 +93,15 @@ class AdbClient(
             return NetworkDeadline.run(timeoutMs, ::close) {
                 val localId = nextStreamId++
                 write(A_OPEN, localId, 0, "shell:$command")
-                val accepted = read()
+                val accepted = readForStream(localId)
                 if (accepted.command != A_OKAY || accepted.arg1 != localId) {
-                    throw IOException("ADB refused to open a shell. Reconnect or pair this app again.")
+                    throw IOException("ADB refused to open a shell (${accepted.toStringShort()}). Reconnect or pair this app again.")
                 }
                 val remoteId = accepted.arg0
                 val result = StringBuilder()
                 while (true) {
-                    val message = read()
-                    if (message.arg0 != remoteId || message.arg1 != localId) {
+                    val message = readForStream(localId)
+                    if (message.command != A_CLSE && message.arg0 != remoteId) {
                         throw IOException("Unexpected ADB stream ID")
                     }
                     when (message.command) {
@@ -114,7 +114,8 @@ class AdbClient(
                             write(A_OKAY, localId, remoteId)
                         }
                         A_CLSE -> {
-                            write(A_CLSE, localId, remoteId)
+                            // A peer-initiated close is final. Sending another CLSE makes
+                            // adbd emit a stale close that corrupts the next command.
                             break
                         }
                         else -> throw IOException("Unexpected ADB shell packet")
@@ -125,6 +126,16 @@ class AdbClient(
         } catch (e: Exception) {
             close()
             throw e
+        }
+    }
+
+    private fun readForStream(localId: Int): AdbMessage {
+        while (true) {
+            val message = read()
+            if (message.arg1 == localId) return message
+            if (message.arg1 in 1 until localId &&
+                message.command in intArrayOf(A_OKAY, A_WRTE, A_CLSE)) continue
+            throw IOException("Unexpected ADB stream packet: ${message.toStringShort()}")
         }
     }
 
