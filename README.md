@@ -1,5 +1,7 @@
 # AudioPipe
 
+**Fork update — in-app Wireless Debugging pairing:** [Phone-only setup](ADB_PAIRING_BN.md). Pair AudioPipe separately; Shizuku Running alone does not authorize it. Physical Xiaomi/Bluetooth routing remains unverified.
+
 A powerful Android audio routing utility that **captures audio from individual apps** and routes it to **specific output devices** (like Bluetooth headphones or the speaker), effectively bypassing the system's default audio routing.
 
 > **Use Case:** Listen to Spotify through your AirPods while Android Auto plays navigation through the car speakers.
@@ -20,9 +22,9 @@ A powerful Android audio routing utility that **captures audio from individual a
 
 | Requirement | Details |
 |-------------|---------|
-| **Android Version** | 10 (Q) or higher |
+| **Android Version** | 11 (API 30) or higher |
 | **Wireless Debugging** | Must be enabled in Developer Options |
-| **ADB Key** | Import an existing `adbkey` or pair via Shizuku first |
+| **ADB authorization** | Pair AudioPipe in-app using the Wireless debugging code and pairing port |
 
 ---
 
@@ -37,14 +39,14 @@ A powerful Android audio routing utility that **captures audio from individual a
    adb install app/build/outputs/apk/debug/app-debug.apk
    ```
 3. Enable **Wireless Debugging** in Developer Options.
-4. Import your ADB private key (usually `~/.android/adbkey`) or pair via Shizuku.
+4. Use Setup / Pair with the pairing code and pairing port from Android Settings. If discovery fails, enter the separate connection port from the main Wireless debugging page.
 
 ---
 
 ## 🚀 Usage
 
 1. Launch **AudioPipe**.
-2. If not connected, tap **Setup** and import your ADB key.
+2. If not connected, tap **Setup / Pair** and authorize AudioPipe with the pairing code.
 3. Select the **app** you want to capture (e.g., Spotify).
 4. Select the **output device** (e.g., Bluetooth headphones).
 5. Adjust **volume** and **balance** as desired.
@@ -114,7 +116,7 @@ app/src/main/java/com/asdfg/soundmaster/
 ## ⚠️ Known Limitations
 
 - **MediaProjection Required** – A screen capture permission dialog appears on each start.
-- **No Pairing** – This app cannot pair with wireless debugging directly; use Shizuku or import an existing key.
+- **Same-phone Pairing** – Keep the Settings pairing-code dialog open using split screen/floating window. Pairing and connection ports differ. Shizuku is not integrated.
 - **Media Buttons** – Hardware media button forwarding is not currently functional.
 
 ---

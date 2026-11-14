@@ -158,6 +158,11 @@ class ShellExecutor(private val context: Context) {
                 if (!isConnected) closeClient()
                 mutableState.value = ConnectionState(describeError(e), isConnected)
                 Result.failure(e)
+            } catch (e: LinkageError) {
+                closeClient()
+                val failure = IOException("ADB crypto library could not load on this device. Report your phone's CPU/Android version.", e)
+                mutableState.value = ConnectionState(failure.message!!)
+                Result.failure(failure)
             }
         }
     }

@@ -1,3 +1,5 @@
+> **ঐতিহাসিক নোট:** নিচের report প্রথম 1.0 APK-এর। বর্তমান in-app pairing, timeout, backup ও authentication পরিবর্তনের জন্য [AudioPipe 1.1 নির্দেশনা](ADB_PAIRING_BN.md) পড়ো। পুরোনো “pairing নেই” বিবরণ বর্তমান সংস্করণে প্রযোজ্য নয়।
+
 # AudioPipe: Android 14 build ও পরীক্ষার নির্দেশনা
 
 এই পর্যালোচনার ভিত্তি `mypc41401-beep/AudioPipe` fork; মূল source commit

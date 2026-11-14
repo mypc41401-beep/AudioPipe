@@ -82,9 +82,24 @@ internal object AdbPairingProtocol {
         val spake = Spake2Context(Spake2Role.Alice, clientName.clone(), serverName.clone())
         var secret: ByteArray? = null
         var shared: ByteArray? = null
+        var nativeContextValid = true
         try {
-            writePacket(output, 0, spake.generateMessage(password))
-            shared = spake.processMessage(readPacket(input, 0))
+            val message = try {
+                spake.generateMessage(password)
+            } catch (e: IllegalStateException) {
+                // Upstream JNI frees its context on a native failure.
+                nativeContextValid = false
+                throw IOException("Could not initialize pairing authentication", e)
+            }
+            writePacket(output, 0, message)
+            val peerMessage = readPacket(input, 0)
+            if (peerMessage.size != 32) throw IOException("Invalid SPAKE2 message size")
+            shared = try {
+                spake.processMessage(peerMessage)
+            } catch (e: IllegalStateException) {
+                nativeContextValid = false
+                throw IOException("Invalid pairing authentication response", e)
+            }
             secret = deriveKey(shared)
             val ours = ByteArray(PEER_SIZE)
             // PeerInfo type 0 = ADB_RSA_PUB_KEY; include the NUL-terminated public key.
@@ -101,7 +116,7 @@ internal object AdbPairingProtocol {
         } finally {
             shared?.fill(0)
             secret?.fill(0)
-            spake.destroy()
+            if (nativeContextValid) spake.destroy()
         }
     }
 
