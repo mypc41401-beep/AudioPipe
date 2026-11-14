@@ -12,6 +12,7 @@ import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.bouncycastle.cert.X509v3CertificateBuilder
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
+import org.conscrypt.Conscrypt
 import java.io.ByteArrayInputStream
 import java.math.BigInteger
 import java.net.Socket
@@ -40,7 +41,7 @@ private const val TAG = "AdbKey"
  * ADB Key management - handles RSA key generation and storage
  * Extracted and adapted from Shizuku
  */
-class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
+class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) : AdbIdentity {
 
     companion object {
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
@@ -103,7 +104,7 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
         Log.d(TAG, "ADB key initialized")
     }
 
-    val adbPublicKey: ByteArray by lazy {
+    override val adbPublicKey: ByteArray by lazy {
         publicKey.adbEncoded(name)
     }
 
@@ -254,7 +255,7 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
         }
     }
 
-    fun sign(data: ByteArray?): ByteArray {
+    override fun sign(data: ByteArray?): ByteArray {
         val cipher = Cipher.getInstance("RSA/ECB/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, privateKey)
         cipher.update(PADDING)
@@ -342,8 +343,9 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
         }
 
     @delegate:RequiresApi(Build.VERSION_CODES.R)
-    val sslContext: SSLContext by lazy {
-        val sslContext = SSLContext.getInstance("TLSv1.3")
+    override val sslContext: SSLContext by lazy {
+        // Per-identity context: never cache a previous imported key globally.
+        val sslContext = SSLContext.getInstance("TLSv1.3", Conscrypt.newProvider())
         sslContext.init(arrayOf(keyManager), arrayOf(trustManager), SecureRandom())
         sslContext
     }

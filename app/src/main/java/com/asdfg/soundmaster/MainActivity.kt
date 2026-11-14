@@ -21,8 +21,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import com.asdfg.soundmaster.adb.ShellExecutor
+import com.asdfg.soundmaster.adb.AdbSetupDialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.asdfg.soundmaster.audio.SoundMasterService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -67,41 +71,26 @@ class MainActivity : AppCompatActivity() {
     private val importKeyLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) {
+        if (uri != null) lifecycleScope.launch {
             try {
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val bytes = inputStream.readBytes()
-                    // Basic validation: Private key usually starts with -----BEGIN PRIVATE KEY-----
-                    // or involves some binary structure. We'll trust the user for now.
-                    if (bytes.isNotEmpty()) {
-                        shellExecutor.importKey(bytes)
-                        Toast.makeText(this, "Key imported! Connecting...", Toast.LENGTH_SHORT).show()
-                        updateAdbStatus(false) // Reset status
-                        
-                        // Trigger immediate connection attempt
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            shellExecutor.discoverPort { port ->
-                                if (port > 0) {
-                                    lifecycleScope.launch {
-                                        val connected = shellExecutor.connect(port)
-                                        withContext(Dispatchers.Main) {
-                                            updateAdbStatus(connected)
-                                            if (connected) {
-                                                Toast.makeText(this@MainActivity, "Connected!", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                Toast.makeText(this@MainActivity, "Connection failed", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                val bytes = withContext(Dispatchers.IO) {
+                    contentResolver.openInputStream(uri)?.use { stream ->
+                        val data = ByteArray(65537)
+                        var size = 0
+                        while (size < data.size) {
+                            val n = stream.read(data, size, data.size - size)
+                            if (n < 0) break
+                            size += n
                         }
-                    } else {
-                        Toast.makeText(this, "Empty file selected", Toast.LENGTH_SHORT).show()
-                    }
+                        require(size in 1..65536) { "Choose an ADB private key smaller than 64 KB" }
+                        data.copyOf(size)
+                    } ?: error("Could not read the selected file")
                 }
+                try {
+                    if (shellExecutor.importKey(bytes).isSuccess) showAdbSetup()
+                } finally { bytes.fill(0) }
             } catch (e: Exception) {
-                Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -118,6 +107,11 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
         loadApps()
         loadAudioOutputs()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                shellExecutor.state.collect { updateAdbStatus(it) }
+            }
+        }
         checkAdbStatus()
         requestPermissions()
     }
@@ -139,14 +133,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        connectButton.setOnClickListener {
-           // Retry connection logic
-           Toast.makeText(this, "Retrying connection...", Toast.LENGTH_SHORT).show()
-           checkAdbStatus()
-        }
-
+        connectButton.setOnClickListener { showAdbSetup() }
         importKeyButton.setOnClickListener {
-            importKeyLauncher.launch(arrayOf("*/*"))
+            if (SoundMasterService.running) {
+                Toast.makeText(this, "Stop audio routing before changing ADB setup", Toast.LENGTH_LONG).show()
+            } else importKeyLauncher.launch(arrayOf("*/*"))
         }
 
         appSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -229,34 +220,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (!shellExecutor.isConnected) {
-                    Toast.makeText(this, "Connecting to ADB...", Toast.LENGTH_SHORT).show()
-                    statusText.text = "Connecting..."
-                    
-                    lifecycleScope.launch {
-                        val port = shellExecutor.getCachedPort()
-                        if (port > 0 && shellExecutor.connect(port)) {
-                            updateAdbStatus(true)
-                            requestMediaProjection()
-                        } else {
-                            shellExecutor.discoverPort { newPort ->
-                                if (newPort > 0) {
-                                    lifecycleScope.launch {
-                                        if (shellExecutor.connect(newPort)) {
-                                            withContext(Dispatchers.Main) {
-                                                updateAdbStatus(true)
-                                                requestMediaProjection()
-                                            }
-                                        } else {
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(this@MainActivity, "Failed to connect to ADB", Toast.LENGTH_SHORT).show()
-                                                updateAdbStatus(false)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    Toast.makeText(this, "Connect AudioPipe in Setup / Pair first", Toast.LENGTH_LONG).show()
+                    showAdbSetup()
                     return@setOnClickListener
                 }
 
@@ -265,37 +230,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkAdbStatus() {
-        if (shellExecutor.isSetUp) {
-            lifecycleScope.launch {
-                shellExecutor.discoverPort { port ->
-                    if (port > 0) {
-                        lifecycleScope.launch {
-                            val connected = shellExecutor.connect(port)
-                            withContext(Dispatchers.Main) {
-                                updateAdbStatus(connected)
-                            }
-                        }
-                    } else {
-                        runOnUiThread { updateAdbStatus(false) }
-                    }
-                }
-            }
-        } else {
-            updateAdbStatus(false)
+    private fun showAdbSetup() {
+        if (SoundMasterService.running) {
+            Toast.makeText(this, "Stop audio routing before changing ADB setup", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (supportFragmentManager.findFragmentByTag("adb-setup") == null) {
+            AdbSetupDialog().show(supportFragmentManager, "adb-setup")
         }
     }
 
-    private fun updateAdbStatus(connected: Boolean) {
-        if (connected) {
-            statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
-            statusText.text = getString(R.string.connected)
-            connectButton.text = "Connected"
-        } else {
-            statusIndicator.setBackgroundResource(R.drawable.status_indicator_red)
-            statusText.text = getString(R.string.disconnected)
-            connectButton.text = "Setup"
+    private fun checkAdbStatus() {
+        if (shellExecutor.isSetUp && !shellExecutor.isConnected) {
+            lifecycleScope.launch { shellExecutor.autoConnect() }
         }
+    }
+
+    private fun updateAdbStatus(state: ShellExecutor.ConnectionState) {
+        statusIndicator.setBackgroundResource(
+            if (state.connected) R.drawable.status_indicator_green else R.drawable.status_indicator_red
+        )
+        statusText.text = state.message
+        connectButton.text = if (state.busy) "Working…" else if (state.connected) "Connected" else "Setup / Pair"
+        connectButton.isEnabled = !state.busy
+        importKeyButton.isEnabled = !state.busy
     }
 
     private fun loadApps() {

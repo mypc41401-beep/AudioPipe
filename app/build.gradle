@@ -11,8 +11,9 @@ android {
         applicationId "com.asdfg.soundmaster"
         minSdk 30
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1-adb-pairing"
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
 
         // NDK disabled for now
         // ndk {
@@ -42,8 +43,8 @@ android {
         jvmTarget = '17'
     }
 
-    // Native build disabled until BoringSSL is properly integrated
-    // For now, pairing must be done via Shizuku first, then this app can use the connection
+    // Native pairing is not built here. SPAKE2 uses the pure-Java implementation;
+    // bundled Conscrypt supplies a public TLS exporter without hidden Android APIs.
     // externalNativeBuild {
     //     cmake {
     //         path file("src/main/jni/CMakeLists.txt")
@@ -79,10 +80,16 @@ dependencies {
     // BouncyCastle for RSA key generation
     implementation 'org.bouncycastle:bcprov-jdk18on:1.77'
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.77'
+    implementation 'com.github.MuntashirAkon.spake2-java:spake2-java:2.2.1'
+    implementation 'org.conscrypt:conscrypt-android:2.9.0'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.11.1'
     testImplementation 'androidx.test:core:1.5.0'
     testImplementation 'org.mockito:mockito-core:5.7.0'
     testImplementation 'org.mockito.kotlin:mockito-kotlin:5.2.1'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.2.0'
 }

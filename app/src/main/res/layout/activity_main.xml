@@ -70,7 +70,7 @@
                         android:id="@+id/connectButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Setup"
+                        android:text="Setup / Pair"
                         style="@style/Widget.Material3.Button.TonalButton" />
                 </LinearLayout>
 
@@ -79,7 +79,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Import Existing Key"
+                    android:text="Import key (advanced, optional)"
                     style="@style/Widget.Material3.Button.TextButton" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

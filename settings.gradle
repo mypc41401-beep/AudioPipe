@@ -10,6 +10,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Only the reviewed SPAKE2 implementation may resolve from JitPack.
+        exclusiveContent {
+            forRepository { maven { url 'https://jitpack.io' } }
+            filter { includeGroup 'com.github.MuntashirAkon.spake2-java' }
+        }
     }
 }
 
