@@ -89,6 +89,16 @@ class NativePolicyIntegrationTest {
                         val p = players.getJSONObject(it)
                         p.getInt("uid") == context.applicationInfo.uid && p.getInt("actual") == target.id
                     })
+                    if (cycle == 0) {
+                        val baseline = status.getInt("helperOpenFds")
+                        assertTrue("Emulator must expose the helper's own descriptor counter", baseline > 0)
+                        var after = baseline
+                        repeat(25) {
+                            output.println("status")
+                            after = JSONObject(input.readLine()).getInt("helperOpenFds")
+                        }
+                        assertTrue("Observer must not leak process pipe descriptors: $baseline -> $after", after <= baseline + 8)
+                    }
                     // An app's explicit output preference may override a primary dynamic policy
                     // on Android 14. This is a platform limit, not success: the monitor must see it.
                     assertTrue(player.setPreferredDevice(speaker))

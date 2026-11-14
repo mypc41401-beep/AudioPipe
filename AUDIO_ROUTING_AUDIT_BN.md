@@ -123,9 +123,13 @@ observation, policy registration, UI background/recreation এবং cleanup এ
    mode সমস্যা করলে standard PCM playback দিয়ে পরীক্ষা করো।
 5. AudioPipe-তে `com.music.bitchord` ও X-906-এর **A2DP** output বেছে নাও। পুরোনো
    PLAY_AUDIO deny-এর error থাকলে Stop → Restore selected app playback → Start।
-6. প্রথমে AudioPipe Start করো, **তারপর** BitChord play করো। Multi-focus enable-এর
-   সময় আগের player pause হতে পারে; নিজে resume করো। Facebook/YouTube-তে অন্য চেনা
-   audio চালাও। “Policy accepted” একা success নয়।
+6. Start যদি simultaneous media চালু করতে বলে, **Enable simultaneous media (then
+   reboot)** চাপো, ফোন restart করো, Wireless debugging আবার চালু করে AudioPipe
+   reconnect করো। Saved key থাকলে শুধু নতুন connection port লাগতে পারে। এই global
+   setting চালু থাকলে অন্যান্য media app-ও একসঙ্গে play করতে পারে; স্বাভাবিক focus
+   ফেরাতে **Restore normal audio focus (then reboot)** ব্যবহার করো। এরপর AudioPipe
+   Start করে BitChord এবং Facebook/YouTube-তে আলাদা audio চালাও। “Policy accepted”
+   একা success নয়।
 7. শুনে যাচাই করো: BitChord pause করলে Bluetooth থামবে, phone-এর দ্বিতীয় audio
    চলবে। দ্বিতীয় app pause করলে phone থামবে, Bluetooth music চলবে। দুটো চালালে
    speaker-দুটিতে যথাক্রমে শুধু নির্ধারিত app শোনা চাই। কোনো duplicate/leak নয়।

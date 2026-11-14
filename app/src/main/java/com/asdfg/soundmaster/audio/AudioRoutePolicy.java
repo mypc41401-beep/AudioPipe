@@ -14,6 +14,8 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.ArrayList;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.File;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -139,6 +141,7 @@ public final class AudioRoutePolicy implements AutoCloseable {
         return new JSONObject().put("type", "status").put("players", observations)
                 .put("routeSource", "native_audio_policy_current_output_clients")
                 .put("helperCpuMillis", Process.getElapsedCpuTime())
+                .put("helperOpenFds", descriptorCount())
                 .put("devicesAvailable", selectedAvailable && speakerAvailable)
                 .put("selectedDevice", selectedDevice.getId()).put("speakerDevice", speaker.getId());
     }
@@ -149,14 +152,29 @@ public final class AudioRoutePolicy implements AutoCloseable {
         Future<String> result = dumpReader.submit(() -> {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
-            for (int n; (n = child.getInputStream().read(buffer)) != -1;) {
-                if (bytes.size() + n > 1024 * 1024) throw new IllegalStateException("Native audio-policy dump exceeded limit");
-                bytes.write(buffer, 0, n);
+            try (InputStream stream = child.getInputStream()) {
+                for (int n; (n = stream.read(buffer)) != -1;) {
+                    if (bytes.size() + n > 1024 * 1024) throw new IllegalStateException("Native audio-policy dump exceeded limit");
+                    bytes.write(buffer, 0, n);
+                }
             }
             return bytes.toString("UTF-8");
         });
         try { return result.get(3, TimeUnit.SECONDS); }
-        finally { child.destroy(); child.waitFor(100, TimeUnit.MILLISECONDS); result.cancel(true); }
+        finally {
+            child.destroy();
+            try { child.getOutputStream().close(); } catch (java.io.IOException ignored) { }
+            try { child.getErrorStream().close(); } catch (java.io.IOException ignored) { }
+            child.waitFor(100, TimeUnit.MILLISECONDS);
+            result.cancel(true);
+        }
+    }
+
+    private int descriptorCount() {
+        try {
+            String[] fds = new File("/proc/self/fd").list();
+            return fds == null ? -1 : fds.length;
+        } catch (SecurityException unavailable) { return -1; }
     }
 
     private List<NativeRoutes.Device> nativeDevices() throws Exception {

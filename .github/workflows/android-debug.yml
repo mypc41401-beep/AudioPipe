@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/android-debug.yml'
+      - '.github/scripts/**'
       - 'app/**'
       - 'gradle/**'
       - 'gradle.properties'
@@ -126,28 +127,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            adb shell settings put system multi_audio_focus_enabled 1
-            adb reboot
-            timeout 120s adb wait-for-device
-            for i in $(seq 1 90); do
-              if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then break; fi
-              sleep 1
-            done
-            mkdir -p app/build/runtime-logs
-            adb shell dumpsys audio > app/build/runtime-logs/audio-before-tests.txt
-            grep -q 'Multi Audio Focus enabled.*true' app/build/runtime-logs/audio-before-tests.txt
-            ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest
-            adb uninstall com.asdfg.soundmaster.test
-            adb uninstall com.asdfg.soundmaster
-            adb install --no-streaming delivered-apk/app-debug.apk
-            adb shell pm grant com.asdfg.soundmaster android.permission.POST_NOTIFICATIONS
-            adb shell am start -W -n com.asdfg.soundmaster/.MainActivity
-            mkdir -p app/build/runtime-logs
-            adb shell dumpsys activity activities > app/build/runtime-logs/activities.txt
-            adb shell dumpsys meminfo com.asdfg.soundmaster > app/build/runtime-logs/memory.txt
-            adb logcat -b crash -d > app/build/runtime-logs/crashes.txt
-            if grep -q 'Process: com.asdfg.soundmaster,' app/build/runtime-logs/crashes.txt; then cat app/build/runtime-logs/crashes.txt; exit 1; fi
+          script: bash .github/scripts/android14-checks.sh
       - name: Upload Android integration test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
