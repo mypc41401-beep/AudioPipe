@@ -44,8 +44,8 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Build installable debug APK
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+      - name: Build APK, run JVM tests and Android lint
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 
       - name: Verify APK signature and metadata
         run: |
@@ -64,10 +64,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Run existing unit tests
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
-
-      - name: Upload unit test reports
+      - name: Upload unit test and lint reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -75,6 +72,7 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/test-results/
+            app/build/reports/lint-results-debug.*
           if-no-files-found: ignore
           retention-days: 14
 
@@ -88,11 +86,11 @@ jobs:
             echo "[Download APK ZIP]($APK_URL)"
             echo ""
             echo "Unzip the download and install app-debug.apk on Android."
-            echo "This verifies compilation, APK signing and JVM tests only; Bluetooth/speaker routing has not been tested on a physical device."
+            echo "The Android job also checks real adbd pairing and a native UID policy on emulator earpiece/speaker endpoints. It does not test Bluetooth, Xiaomi hardware, or acoustic isolation."
           } >> "$GITHUB_STEP_SUMMARY"
 
   android14-pairing:
-    name: Android 14 real adbd pairing test
+    name: Android 14 ADB and native UID policy tests
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -109,7 +107,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Pair against Android Settings and verify a real ADB shell
+      - name: Verify real adbd pairing and native UID audio policy
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
@@ -120,7 +118,14 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest
+          script: |
+            ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest
+            adb shell am start -W -n com.asdfg.soundmaster/.MainActivity
+            mkdir -p app/build/runtime-logs
+            adb shell dumpsys activity activities > app/build/runtime-logs/activities.txt
+            adb shell dumpsys meminfo com.asdfg.soundmaster > app/build/runtime-logs/memory.txt
+            adb logcat -b crash -d > app/build/runtime-logs/crashes.txt
+            if grep -q 'Process: com.asdfg.soundmaster,' app/build/runtime-logs/crashes.txt; then cat app/build/runtime-logs/crashes.txt; exit 1; fi
       - name: Upload Android integration test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -129,5 +134,6 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+            app/build/runtime-logs/
           if-no-files-found: ignore
           retention-days: 14

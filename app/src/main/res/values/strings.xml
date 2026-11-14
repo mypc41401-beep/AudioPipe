@@ -14,8 +14,8 @@
     <string name="disconnected">Disconnected</string>
     
     <!-- Main UI -->
-    <string name="select_app">Select App</string>
-    <string name="select_output">Output Device</string>
+    <string name="select_app">Music app → Bluetooth</string>
+    <string name="select_output">Bluetooth media output</string>
     <string name="volume">Volume</string>
     <string name="balance">Balance</string>
     <string name="start">Start</string>
@@ -30,4 +30,5 @@
     <!-- Errors -->
     <string name="error_no_adb">ADB not connected. Please set up wireless debugging.</string>
     <string name="error_permission">Permission denied. Please grant the required permissions.</string>
+    <string name="uid_routing_explanation">Other apps’ media/game audio → phone speaker. Uses an ADB shell audio policy, without recording or replaying audio. Start before playing both apps. Multi-audio-focus is enabled while running and restored on Stop; calls or transient focus can still interrupt playback. Use your player/device volume controls. Android must report both outputs before a split is observed. This phone’s hardware behavior still needs listening tests.</string>
 </resources>

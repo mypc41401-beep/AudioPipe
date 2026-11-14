@@ -24,6 +24,8 @@ import kotlin.math.sqrt
 /**
  * Audio playback thread - captures audio from an app and plays it on specified outputs
  * Extracted and adapted from ShizuTools, using ShellExecutor instead of ShizukuRunner
+ * Legacy capture/replay implementation, retained for history. The service no longer calls this
+ * class: it cannot establish native per-app split routing and its AppOps muting is unsafe on crash.
  */
 @RequiresApi(Build.VERSION_CODES.Q)
 class PlayBackThread(

@@ -1,254 +1,165 @@
 package com.asdfg.soundmaster.audio
 
-import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.media.AudioAttributes.ALLOW_CAPTURE_BY_NONE
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
-import android.media.projection.MediaProjection
-import android.media.projection.MediaProjectionManager
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
-import androidx.annotation.RequiresApi
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import com.asdfg.soundmaster.R
+import com.asdfg.soundmaster.MainActivity
 import com.asdfg.soundmaster.adb.ShellExecutor
-import java.util.Timer
-import kotlin.concurrent.timerTask
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
-/**
- * SoundMaster foreground service
- * Handles audio capture and routing for selected apps
- */
-@RequiresApi(Build.VERSION_CODES.Q)
+/** Holds the shell policy independently of the Activity. Never captures or replays audio. */
 class SoundMasterService : Service() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var task: Job? = null
+    private var session: RouteSession? = null
 
-    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    private var mediaProjectionManager: MediaProjectionManager? = null
-    private var mediaProjection: MediaProjection? = null
-    
-    private lateinit var mediaSession: android.support.v4.media.session.MediaSessionCompat
-    private var shellExecutor: ShellExecutor? = null
-    
-    var packageThreads = hashMapOf<String, PlayBackThread>()
-    private var latencyUpdateTimer = Timer()
-
-    override fun onBind(intent: Intent): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            stopSelf()
-            return
-        }
-
-        mediaSession = android.support.v4.media.session.MediaSessionCompat(this, TAG).apply {
-            setCallback(object : android.support.v4.media.session.MediaSessionCompat.Callback() {
-                override fun onPlay() {
-                    handleMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY)
-                }
-
-                override fun onPause() {
-                    handleMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)
-                }
-
-                override fun onSkipToNext() {
-                    handleMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
-                }
-
-                override fun onSkipToPrevious() {
-                    handleMediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-                }
-                
-                override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
-                    // Let the default implementation handle mapping to onPlay/onPause/etc.
-                    return super.onMediaButtonEvent(mediaButtonEvent)
-                }
-            })
-            isActive = true
-        }
-
-        // Volume Bridge: Trick AVRCP (Car) into controlling "Remote" volume,
-        // which we map back to the real System Music stream (AirPods).
-        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        
-        val volumeProvider = object : androidx.media.VolumeProviderCompat(
-            VOLUME_CONTROL_RELATIVE,
-            maxVol,
-            currentVol
-        ) {
-            override fun onAdjustVolume(direction: Int) {
-                // Forward the Car's command to the Phone's Master Volume
-                audioManager.adjustStreamVolume(
-                    AudioManager.STREAM_MUSIC,
-                    direction,
-                    AudioManager.FLAG_SHOW_UI
-                )
-                // Update our internal state to match
-                currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-            }
-        }
-        mediaSession.setPlaybackToRemote(volumeProvider)
-
-        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
-            .setContentText(getString(R.string.service_notification_text, 0))
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOnlyAlertOnce(true)
-            // Add media style to notification for lockscreen controls
-            .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
-                .setMediaSession(mediaSession.sessionToken))
-
-        startForeground(
-            NOTIFICATION_ID,
-            builder.build(),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-        )
-
-        // Update notification with latency info
-        latencyUpdateTimer.schedule(timerTask {
-            val avg = packageThreads.values.map { it.getLatency() }.average().toInt()
-            packageThreads.values.forEach { it.loadedCycles = 0 }
-            
-            builder.setContentTitle(getString(R.string.service_notification_title))
-            builder.setContentText("Controlling ${packageThreads.size} apps. Latency: ${avg}ms")
-            
-            if (ActivityCompat.checkSelfPermission(
-                    applicationContext,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                NotificationManagerCompat.from(applicationContext)
-                    .notify(NOTIFICATION_ID, builder.build())
-            }
-        }, UPDATE_INTERVAL, UPDATE_INTERVAL)
-
-        mediaProjectionManager = applicationContext.getSystemService(
-            Context.MEDIA_PROJECTION_SERVICE
-        ) as MediaProjectionManager
-
-        audioManager.setAllowedCapturePolicy(ALLOW_CAPTURE_BY_NONE)
-        
-        Log.d(TAG, "SoundMasterService created")
-        instance = this
-    }
-
-    private fun handleMediaKey(keyCode: Int) {
-        // Special Resume Sequence: Allow -> Play -> Deny
-        val dummyListener = object : ShellExecutor.CommandResultListener {
-            override fun onCommandResult(output: String, done: Boolean) {}
-            override fun onCommandError(error: String) {
-                Log.e(TAG, "Media Key Error: $error")
-            }
-        }
-
-        if (keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY) {
-            packageThreads.forEach { (_, thread) -> thread.setAppOps(true) }
-            
-            shellExecutor?.command("input keyevent $keyCode", dummyListener)
-            
-            // Re-deny after delay
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                packageThreads.forEach { (_, thread) -> thread.setAppOps(false) }
-            }, 500)
-        } else {
-            // Standard Pass-through
-            shellExecutor?.command("input keyevent $keyCode", dummyListener)
-        }
+        RoutingDiagnostics.record("Routing foreground service created; capture/replay disabled")
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel(NOTIFICATION_CHANNEL,
+            "Audio routing", NotificationManager.IMPORTANCE_LOW))
+        startForeground(NOTIFICATION_ID, notification("Starting audio policy…"),
+            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent != null && projectionData != null) {
-            val pkgs = intent.getStringArrayExtra("packages")?.toMutableList() ?: mutableListOf()
-            val devices = intent.getIntArrayExtra("devices")?.toMutableList() ?: mutableListOf()
-            val volumes = intent.getFloatArrayExtra("volumes")?.toMutableList() ?: mutableListOf()
+        if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
+        if (task != null) return START_NOT_STICKY
+        val pkg = intent?.getStringExtra("package")
+        val deviceId = intent?.getIntExtra("device", -1) ?: -1
+        if (pkg.isNullOrBlank() || deviceId < 0) {
+            mutableState.value = RoutingState(message = "Stopped: select an app and a connected Bluetooth output.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        val deviceName = intent?.getStringExtra("deviceName") ?: "Bluetooth"
+        mutableState.value = RoutingState(busy = true, packageName = pkg, deviceId = deviceId,
+            deviceName = deviceName, message = "Checking ADB audio-policy support…")
+        RoutingDiagnostics.record("Start requested: $pkg -> deviceId=$deviceId")
+        task = scope.launch { runPolicy(pkg, deviceId, deviceName) }
+        return START_NOT_STICKY // no replaying stale MediaProjection grants or phantom running state
+    }
 
-            if (pkgs.isNotEmpty()) {
-                running = true
-                startingIntent = intent
-                
-                mediaProjection = mediaProjectionManager?.getMediaProjection(
-                    Activity.RESULT_OK,
-                    projectionData!!
-                )
-
-                // Initialize shell executor
-                shellExecutor = ShellExecutor.getInstance(applicationContext)
-                val audioDevices = getAudioOutputDevices()
-
-                pkgs.forEachIndexed { index, pkg ->
-                    val deviceId = devices.getOrElse(index) { -1 }
-                    val volume = volumes.getOrElse(index) { 100f }
-                    val device = audioDevices.find { it.id == deviceId }
-                    
-                    startAudioCapture(pkg, device, volume, shellExecutor!!)
+    private suspend fun runPolicy(pkg: String, deviceId: Int, deviceName: String) {
+        var finalMessage = "Stopped. Android default audio routing restored."
+        val route = RouteSession(applicationContext)
+        session = route
+        try {
+            val uid = packageManager.getApplicationInfo(pkg, 0).uid
+            require(uid >= 10000) { "Select an ordinary media app, not a system service." }
+            RouteSession.restoreFocusIfNeeded(applicationContext).getOrThrow()
+            val oldOp = ShellExecutor.getInstance(this).commandSync(
+                "appops get ${RouteSession.quote(pkg)} PLAY_AUDIO").getOrThrow()
+            check(!oldOp.contains("deny", true) && !oldOp.contains("ignore", true)) {
+                "Selected app playback is blocked by PLAY_AUDIO. Stop and tap Restore selected app playback, then Start again."
+            }
+            val actualName = route.start(uid, deviceId, simultaneous = true)
+            val installed = RoutingState(active = true, packageName = pkg, deviceId = deviceId,
+                deviceName = actualName, message = "Policy accepted. Play $pkg and a second app to inspect their actual outputs.")
+            mutableState.value = installed
+            RoutingDiagnostics.record("Native UID policy accepted: uid=$uid, deviceId=$deviceId")
+            updateNotification(installed.message)
+            var mismatchSince = 0L
+            var lastMessage = ""
+            while (currentCoroutineContext().isActive) {
+                val observation = route.observe()
+                check(observation.getBoolean("devicesAvailable")) {
+                    "Bluetooth or speaker disconnected. Reconnect the device and start again."
                 }
+                val evidence = RouteEvidence.from(observation, uid)
+                RoutingDiagnostics.observe(observation)
+                val mismatch = evidence.wrong > 0 || evidence.unknown > 0
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (mismatch && mismatchSince == 0L) mismatchSince = now
+                if (!mismatch) mismatchSince = 0L
+                check(mismatchSince == 0L || now - mismatchSince < 3500) {
+                    "ROM did not keep the requested outputs: ${evidence.wrong} wrong, ${evidence.unknown} unknown. Split routing is unsupported or overridden with these devices."
+                }
+                val message = when {
+                    mismatch -> "Waiting for actual output routes (${evidence.wrong} wrong, ${evidence.unknown} unknown)…"
+                    evidence.bothObserved -> "Observed by Android: $pkg → $actualName; ${evidence.others} other media player(s) → phone speaker. Check both speakers by listening."
+                    else -> "Policy accepted; split not yet observed. Selected app: ${evidence.selected} active player(s); other apps: ${evidence.others}. Play both apps."
+                }
+                mutableState.value = installed.copy(message = message, bothObserved = evidence.bothObserved)
+                if (message != lastMessage) RoutingDiagnostics.record(message)
+                lastMessage = message
+                updateNotification(message)
+                delay(1000)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            finalMessage = "Stopped: ${error.message?.take(600)}\nAndroid default routing restored; split audio is not active."
+        } finally {
+            route.close()
+            session = null
+            withContext(NonCancellable + Dispatchers.IO) {
+                val restored = RouteSession.restoreFocusIfNeeded(applicationContext)
+                if (restored.isFailure) finalMessage += "\nReconnect ADB to restore the previous multi-audio-focus setting."
+                mutableState.value = RoutingState(packageName = pkg, deviceId = deviceId,
+                    deviceName = deviceName, message = finalMessage)
+                RoutingDiagnostics.record(finalMessage)
+                stopSelf()
             }
         }
-        return START_STICKY
     }
 
-    private fun startAudioCapture(
-        packageName: String,
-        device: AudioDeviceInfo?,
-        volume: Float,
-        shellExecutor: ShellExecutor
-    ) {
-        if (mediaProjection == null) return
-        
-        val thread = PlayBackThread(
-            applicationContext,
-            packageName,
-            mediaProjection!!,
-            shellExecutor
-        )
-        thread.createOutput(device, device?.id ?: -1, volume)
-        thread.start()
-        packageThreads[packageName] = thread
-        
-        Log.d(TAG, "Started audio capture for $packageName -> ${device?.productName ?: "default"}")
+    private fun notification(message: String): android.app.Notification {
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val stop = PendingIntent.getService(this, 1, Intent(this, SoundMasterService::class.java)
+            .setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
+            .setContentTitle("AudioPipe audio policy")
+            .setContentText(message).setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setSmallIcon(android.R.drawable.ic_media_play).setOngoing(true).setOnlyAlertOnce(true)
+            .setContentIntent(open).addAction(0, "Stop", stop).build()
     }
 
-    fun getAudioOutputDevices(): List<AudioDeviceInfo> {
-        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            .filter { 
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                it.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
-                it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-            }
+    private fun updateNotification(message: String) {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED) return
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(message))
     }
 
     override fun onDestroy() {
-        running = false
-        latencyUpdateTimer.cancel()
-        packageThreads.forEach { it.value.interrupt() }
-        mediaProjection?.stop()
-        mediaSession.release()
+        RoutingDiagnostics.record("Routing foreground service destroyed; closing shell control socket")
+        session?.close()
+        task?.cancel()
+        scope.cancel()
+        if (task == null) mutableState.value = mutableState.value.copy(active = false, busy = false)
         super.onDestroy()
-        instance = null
-        Log.d(TAG, "SoundMasterService destroyed")
     }
 
+    data class RoutingState(
+        val active: Boolean = false,
+        val busy: Boolean = false,
+        val packageName: String? = null,
+        val deviceId: Int = -1,
+        val deviceName: String = "",
+        val message: String = "Stopped. Select the music app and its Bluetooth output. Other media will use the phone speaker.",
+        val bothObserved: Boolean = false
+    )
+
     companion object {
-        const val TAG = "SoundMasterService"
+        const val ACTION_STOP = "com.asdfg.soundmaster.STOP_ROUTING"
         const val NOTIFICATION_ID = 1
         const val NOTIFICATION_CHANNEL = "soundmaster_service"
-        const val UPDATE_INTERVAL = 1000L
-
-        var running = false
-        var instance: SoundMasterService? = null
-        var startingIntent: Intent? = null
-        var projectionData: Intent? = null
+        private val mutableState = MutableStateFlow(RoutingState())
+        val state: StateFlow<RoutingState> = mutableState
+        val running: Boolean get() = state.value.active || state.value.busy
     }
 }
