@@ -93,7 +93,6 @@ jobs:
 
   android14-pairing:
     name: Android 14 real adbd pairing test
-    needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -114,7 +113,9 @@ jobs:
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
-          target: google_apis
+          # A user image enables secure adbd; google_apis has ro.adb.secure=0
+          # and closes the Wireless debugging Settings screen without pairing.
+          target: google_apis_playstore
           arch: x86_64
           profile: pixel_2
           disable-animations: true

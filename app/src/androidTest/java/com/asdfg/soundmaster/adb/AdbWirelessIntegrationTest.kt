@@ -20,6 +20,8 @@ class AdbWirelessIntegrationTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val device = UiDevice.getInstance(instrumentation)
+        assertEquals("Real pairing requires a secure-adbd system image", "1",
+            device.executeShellCommand("getprop ro.adb.secure").trim())
         device.executeShellCommand("settings put global development_settings_enabled 1")
         device.executeShellCommand("svc wifi enable")
         device.executeShellCommand("settings put global adb_wifi_enabled 1")
