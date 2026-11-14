@@ -46,13 +46,19 @@ class AdbWirelessIntegrationTest {
         check(!allowed.contains("Exception")) { "Could not authorize emulator Wi-Fi: $allowed" }
         device.executeShellCommand("settings put global adb_wifi_enabled 1")
         var connectionPort = -1
+        var portReply = ""
         repeat(50) {
             if (connectionPort !in 1..65535) {
-                connectionPort = device.executeShellCommand("getprop service.adb.tls.port").trim().toIntOrNull() ?: -1
+                // service.adb.tls.port is not readable by shell on every user image.
+                // API-34 IAdbManager transaction 10 returns the port as a Parcel int.
+                portReply = device.executeShellCommand("service call adb 10")
+                val words = Regex("(?i)(?<![a-z0-9])[0-9a-f]{8}(?![a-z0-9])")
+                    .findAll(portReply).map { it.value }.toList()
+                connectionPort = words.getOrNull(1)?.toLong(16)?.toInt() ?: -1
                 if (connectionPort !in 1..65535) Thread.sleep(200)
             }
         }
-        check(connectionPort in 1..65535) { "Secure adbd TLS server did not start: $wifi" }
+        check(connectionPort in 1..65535) { "Could not read secure adbd port: reply=$portReply, wifi=$wifi" }
 
         val ready = CountDownLatch(2)
         val code = AtomicReference<String?>()
