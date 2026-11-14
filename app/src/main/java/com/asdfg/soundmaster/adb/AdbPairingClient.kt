@@ -100,7 +100,7 @@ internal object AdbPairingProtocol {
                 nativeContextValid = false
                 throw IOException("Invalid pairing authentication response", e)
             }
-            secret = deriveKey(shared)
+            secret = deriveKey(requireNotNull(shared) { "SPAKE2 did not return a shared key" })
             val ours = ByteArray(PEER_SIZE)
             // PeerInfo type 0 = ADB_RSA_PUB_KEY; include the NUL-terminated public key.
             publicKey.copyInto(ours, 1)
