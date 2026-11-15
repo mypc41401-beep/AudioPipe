@@ -29,6 +29,12 @@ last_tap = 0
 end = time.monotonic() + 110
 while time.monotonic() < end:
     try:
+        radio = adb("shell", "dumpsys", "bluetooth_manager")
+        a2dp = radio.partition("Profile: A2dpService")[2].partition("\nProfile:")[0]
+        if NAME in radio and "mConnectionState: CONNECTED" in a2dp:
+            (OUT/"paired-bluetooth.txt").write_text(radio)
+            print("Android A2dpService reports the virtual speaker CONNECTED", flush=True)
+            break
         adb("shell", "uiautomator", "dump", "/data/local/tmp/bluetooth-window.xml")
         xml = adb("exec-out", "cat", "/data/local/tmp/bluetooth-window.xml")
         (OUT/"pairing-ui.xml").write_text(xml)
