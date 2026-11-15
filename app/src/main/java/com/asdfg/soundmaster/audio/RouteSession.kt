@@ -25,8 +25,11 @@ class RouteSession(private val context: Context,
     private lateinit var input: BufferedReader
     private lateinit var output: PrintWriter
     @Volatile private var configSent = false
+    var actualDeviceId: Int = -1
+        private set
 
-    suspend fun start(uid: Int, deviceId: Int, simultaneous: Boolean): String {
+    suspend fun start(uid: Int, deviceId: Int, simultaneous: Boolean,
+        deviceType: Int = -1, deviceAddress: String = "", deviceName: String = ""): String {
         val tokenBytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
         val token = tokenBytes.joinToString("") { "%02x".format(it.toInt() and 255) }
         val server = ServerSocket(0, 2, InetAddress.getByName("127.0.0.1"))
@@ -47,7 +50,7 @@ class RouteSession(private val context: Context,
                         && MessageDigest.isEqual(token.toByteArray(), hello.optString("token").toByteArray())
                     if (!authorized) { candidate.close(); continue }
                     socket = candidate
-                    candidate.soTimeout = 8000
+                    candidate.soTimeout = 12000 // bounded initial device-settling + policy setup
                     input = reader
                     output = PrintWriter(candidate.getOutputStream().writer(Charsets.UTF_8), true)
                 } catch (_: Exception) { candidate.close() }
@@ -58,9 +61,13 @@ class RouteSession(private val context: Context,
             currentCoroutineContext().ensureActive()
             configSent = true
             output.println(JSONObject().put("token", token).put("appUid", uid)
-                .put("deviceId", deviceId).put("simultaneous", simultaneous).toString())
+                .put("deviceId", deviceId).put("deviceType", deviceType)
+                .put("deviceAddress", deviceAddress).put("deviceName", deviceName)
+                .put("simultaneous", simultaneous).toString())
             val result = response()
             check(result.optString("type") == "installed") { "Audio policy was not installed: $result" }
+            actualDeviceId = result.getInt("deviceId")
+            socket?.soTimeout = 8000
             return result.getString("device")
         } finally {
             server.close()

@@ -49,11 +49,14 @@ class SoundMasterService : Service() {
         mutableState.value = RoutingState(busy = true, packageName = pkg, deviceId = deviceId,
             deviceName = deviceName, message = "Checking ADB audio-policy support…")
         RoutingDiagnostics.record("Start requested: $pkg -> deviceId=$deviceId")
-        task = scope.launch { runPolicy(pkg, deviceId, deviceName) }
+        val deviceType = intent?.getIntExtra("deviceType", -1) ?: -1
+        val address = intent?.getStringExtra("deviceAddress").orEmpty()
+        task = scope.launch { runPolicy(pkg, deviceId, deviceName, deviceType, address) }
         return START_NOT_STICKY // no replaying stale MediaProjection grants or phantom running state
     }
 
-    private suspend fun runPolicy(pkg: String, deviceId: Int, deviceName: String) {
+    private suspend fun runPolicy(pkg: String, deviceId: Int, deviceName: String, deviceType: Int, address: String) {
+        var resolvedDeviceId = deviceId
         var finalMessage = "Stopped. Android default audio routing restored."
         val route = RouteSession(applicationContext)
         session = route
@@ -65,11 +68,13 @@ class SoundMasterService : Service() {
             check(!oldOp.contains("deny", true) && !oldOp.contains("ignore", true)) {
                 "Selected app playback is blocked by PLAY_AUDIO. Stop and tap Restore selected app playback, then Start again."
             }
-            val actualName = route.start(uid, deviceId, simultaneous = true)
-            val installed = RoutingState(active = true, packageName = pkg, deviceId = deviceId,
+            val actualName = route.start(uid, deviceId, simultaneous = true,
+                deviceType = deviceType, deviceAddress = address, deviceName = deviceName)
+            resolvedDeviceId = route.actualDeviceId
+            val installed = RoutingState(active = true, packageName = pkg, deviceId = resolvedDeviceId,
                 deviceName = actualName, message = "Policy accepted. Play $pkg and a second app to inspect their actual outputs.")
             mutableState.value = installed
-            RoutingDiagnostics.record("Native UID policy accepted: uid=$uid, deviceId=$deviceId")
+            RoutingDiagnostics.record("Native UID policy accepted: uid=$uid, requestedPort=$deviceId, actualPort=$resolvedDeviceId")
             updateNotification(installed.message)
             var mismatchSince = 0L
             var lastMessage = ""
@@ -110,7 +115,7 @@ class SoundMasterService : Service() {
                 route.close()
                 session = null
                 if (!acknowledged) finalMessage = "Stopped controlling audio; native policy cleanup was not acknowledged. Reconnect ADB and export diagnostics."
-                mutableState.value = RoutingState(packageName = pkg, deviceId = deviceId,
+                mutableState.value = RoutingState(packageName = pkg, deviceId = resolvedDeviceId,
                     deviceName = deviceName, message = finalMessage)
                 RoutingDiagnostics.record(finalMessage)
                 stopSelf()

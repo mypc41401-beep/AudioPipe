@@ -127,7 +127,10 @@ class TwoUidBluetoothTest {
                 }
                 activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                 await("UI Start must work again after Bluetooth reconnection") { SoundMasterService.state.value.bothObserved }
-                assertBoth(context,peerUid,context.applicationInfo.uid,reconnected.id,speaker.id)
+                val installedPort=SoundMasterService.state.value.deviceId
+                assertTrue("Resolved port must be a current A2DP device",manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    .any { it.type==AudioDeviceInfo.TYPE_BLUETOOTH_A2DP && it.id==installedPort })
+                assertBoth(context,peerUid,context.applicationInfo.uid,installedPort,speaker.id)
                 println("TWO_UID_RECONNECTED_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
                 activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                 await("Final UI Stop must finish policy cleanup") { !SoundMasterService.running }

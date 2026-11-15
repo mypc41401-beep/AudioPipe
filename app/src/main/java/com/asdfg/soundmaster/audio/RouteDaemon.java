@@ -13,6 +13,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 
 /** APK entry point launched with app_process through authenticated local ADB, not an exported service. */
 public final class RouteDaemon {
@@ -48,13 +50,41 @@ public final class RouteDaemon {
                 if (uid < 10000) throw new IllegalArgumentException("Select an ordinary media application UID");
                 int deviceId = request.getInt("deviceId");
                 AudioDeviceInfo target = null, speaker = null;
-                for (AudioDeviceInfo d : AudioRoutePolicy.outputs()) {
-                    if (d.getId() == deviceId && (d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                            || d.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET
-                            || d.getType() == AudioDeviceInfo.TYPE_BLE_SPEAKER)) target = d;
-                    if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) speaker = d;
-                }
-                if (target == null) throw new IllegalStateException("Selected Bluetooth media output disconnected. Reconnect and select it again.");
+                int expectedType = request.optInt("deviceType", -1);
+                String address = request.optString("deviceAddress");
+                String name = request.optString("deviceName");
+                // A2DP codec negotiation can replace a freshly selected port between UI click
+                // and helper launch. Resolve the same device identity, never a recycled ID.
+                long deadline = System.nanoTime() + (expectedType > 0 ? 3_000_000_000L : 0);
+                int stablePort = -1;
+                long stableSince = 0;
+                String selectionError = "Selected Bluetooth media output disconnected. Reconnect and select it again.";
+                do {
+                    AudioDeviceInfo[] current = AudioRoutePolicy.outputs();
+                    speaker = null;
+                    List<OutputSelection.Endpoint> candidates = new ArrayList<>();
+                    for (AudioDeviceInfo d : current) {
+                        if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) speaker = d;
+                        if (d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                                || d.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET
+                                || d.getType() == AudioDeviceInfo.TYPE_BLE_SPEAKER)
+                            candidates.add(new OutputSelection.Endpoint(d.getId(), d.getType(),
+                                    d.getAddress(), d.getProductName().toString()));
+                    }
+                    OutputSelection.Endpoint match = null;
+                    try { match = OutputSelection.resolve(candidates, deviceId, expectedType, address, name); }
+                    catch (IllegalStateException ambiguous) { selectionError = ambiguous.getMessage(); }
+                    if (match != null) {
+                        if (stablePort != match.id) { stablePort = match.id; stableSince = System.nanoTime(); }
+                        if (expectedType < 0 || System.nanoTime() - stableSince >= 200_000_000L) {
+                            for (AudioDeviceInfo d : current) if (d.getId() == match.id) target = d;
+                            break;
+                        }
+                    } else { stablePort = -1; }
+                    if (System.nanoTime() >= deadline) break;
+                    Thread.sleep(100);
+                } while (true);
+                if (target == null) throw new IllegalStateException(selectionError);
                 if (speaker == null) throw new IllegalStateException("Built-in speaker output is unavailable");
                 route = new AudioRoutePolicy(uid, target, speaker);
                 route.install(request.getBoolean("simultaneous"));
@@ -62,7 +92,7 @@ public final class RouteDaemon {
                 // CPU during offloaded music without tearing down a valid policy. Process death
                 // closes the socket (EOF); explicit Stop awaits cleanup. No polling wake lock.
                 control.setSoTimeout(0);
-                out.println(new JSONObject().put("type", "installed").put("device", target.getProductName()));
+                out.println(new JSONObject().put("type", "installed").put("device", target.getProductName()).put("deviceId", target.getId()));
                 while (true) {
                     String command = read(in);
                     if ("stop".equals(command)) break;

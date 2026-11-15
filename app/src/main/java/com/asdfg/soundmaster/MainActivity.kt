@@ -209,6 +209,8 @@ class MainActivity : AppCompatActivity() {
                 putExtra("package", pkg)
                 putExtra("device", device.id)
                 putExtra("deviceName", device.productName.toString())
+                putExtra("deviceType", device.type)
+                putExtra("deviceAddress", device.address)
             })
             // Only the service may announce policy acceptance or observed outputs.
             serviceStatus.text = "Starting foreground service…"
