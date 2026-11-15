@@ -32,7 +32,9 @@ class AdbNetworkObserverTest {
         val manager=mock<ConnectivityManager>();val context=mock<Context>();val wifi=mock<Network>()
         whenever(context.getSystemService(ConnectivityManager::class.java)).thenReturn(manager)
         whenever(manager.allNetworks).thenReturn(arrayOf(wifi))
-        whenever(manager.getNetworkCapabilities(wifi)).thenReturn(NetworkCapabilities().addTransportType(NetworkCapabilities.TRANSPORT_WIFI))
+        val capabilities=mock<NetworkCapabilities>()
+        whenever(capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)).thenReturn(true)
+        whenever(manager.getNetworkCapabilities(wifi)).thenReturn(capabilities)
         val states=mutableListOf<Boolean>();val observer=AdbNetworkObserver(context) { states.add(it) }
         assertEquals(listOf(true),states);observer.close()
     }

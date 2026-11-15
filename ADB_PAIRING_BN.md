@@ -1,6 +1,54 @@
-# AudioPipe 1.1: ফোন থেকে ADB pairing
+# AudioPipe: ফোন থেকে ADB pairing ও reconnect
 
-> **বর্তমান routing build:** 1.2-তে ADB pairing একই আছে; capture/replay বদলে shell
+## 1.3-এর reconnect পরিবর্তন
+
+Wi-Fi/ Wireless debugging বন্ধ হলে paired-device entry থাকতে পারে, কিন্তু আগের TCP
+port বা socket আর কাজ নাও করতে পারে। AudioPipe এখন সেই পুরোনো port-কে পরিচয় হিসেবে
+ধরে রাখে না। Saved RSA identity আগের একই Android Keystore AES-GCM format-এ থাকে;
+শুধু ব্যর্থ port hint বাতিল করে বর্তমান `_adb-tls-connect._tcp` service খোঁজে। Android
+14-এ NSD service-info callback port বদলানোও অনুসরণ করে। অন্য ফোনের service গ্রহণ করে না;
+ADB connection এখনও কেবল এই ফোনের `127.0.0.1`-এ হয়।
+
+- AudioPipe দেখা যাচ্ছে, অথবা routing foreground service চলছে—এই সময় automatic
+  recovery সক্রিয়। সুস্থ connection-এ ৩০ সেকেন্ড পর shell liveness probe হয়। App বন্ধ
+  এবং routing বন্ধ থাকলে network observer, NSD watch ও retry timer বন্ধ থাকে।
+- ব্যর্থতার পরে ১/২/৪/৮/১৫ সেকেন্ড backoff; এরপর timer দিয়ে অনন্ত retry নয়। নতুন
+  local service, network change, app আবার খোলা বা manual Connect হলে recovery জাগে।
+- Wi-Fi হারালে UI disconnected দেখায়। Wi-Fi ফিরলে saved identity দিয়ে discovery হয়।
+  **Android Wireless debugging নিজে বন্ধ করে দিলে Settings থেকে সেটি আবার On করতে হবে।**
+  AudioPipe নিরাপত্তার এই setting নিজের থেকে চালু করে না।
+- NSD/mDNS ROM বা network-এ ব্যর্থ হলে Setup → Connection port-এ মূল Wireless debugging
+  page-এর বর্তমান port লিখে Connect / verify shell করা যায়; নতুন pairing code লাগে না।
+- Key decrypt ব্যর্থ হলে আগের identity আর silently নতুন key দিয়ে প্রতিস্থাপন হয় না।
+  Unlock/restart করে আবার চেষ্টা করো; app data clear করলে saved identity হারাবে।
+- Disconnect-এর সময়ে shell command-এর ফল অজানা হলে সেটি নিজে replay হয় না; একই
+  mutating command দুবার চলে যাওয়ার ঝুঁকি এড়ানো হয়েছে। Cancel retry-ও থামায়।
+
+এগুলো implementation-এর বর্ণনা; সর্বশেষ automated ফলাফল ও APK link
+[verification report](AUDIOPIPE_VERIFICATION_BN.md)-এ দেখো। নিজের Redmi-তে নিচের পরীক্ষা দরকার।
+
+### Redmi-তে reconnect পরীক্ষা
+
+1. আগে notifications allow করে `Connected — ADB shell verified` নিশ্চিত করো। Pairing
+   identity পরীক্ষা করতে Android Settings-এর Paired devices-এ AudioPipe entry খেয়াল করো;
+   সেটি Forget করবে না।
+2. AudioPipe খোলা রেখে Wireless debugging Off → On করো। আবার connected হওয়া ও নতুন
+   connection port পাওয়া পরীক্ষা করো; pairing-code dialog খোলা লাগার কথা নয়।
+3. Wi-Fi Off → On করো, আগের network-এ যুক্ত হও। Android Wireless debugging Off করে
+   দিলে নিজে On করো। AudioPipe-তে ফিরে saved identity দিয়ে reconnect পরীক্ষা করো।
+4. Routing চালু রেখে Home-এ গিয়ে একই পরীক্ষা করো। তারপর AudioPipe পুনরায় খোলো।
+   ADB connection ফেরত আসা **routing policy বা audio isolation ফিরে আসার প্রমাণ নয়**;
+   routing বন্ধ হয়ে গেলে Bluetooth stable করে আবার Start করতে হবে।
+5. AudioPipe বন্ধ/পুনরায় খোলা ও ফোন reboot-এর পরে Wireless debugging On করে পরীক্ষা
+   করো। NSD ব্যর্থ হলে manual current connection port fallback ব্যবহার করো।
+6. ব্যর্থ হলে Export diagnostics করো, Wi-Fi/ Wireless debugging কোনটি বদলেছিল ও সময়
+   লিখে দাও। Private key, pairing code বা control token পাঠিও না।
+
+App update একই signing identity-তে install হলে data/key থাকে। অন্য CI debug signer হলে
+Android update প্রত্যাখ্যান করতে পারে; uninstall করলে key/data হারাবে এবং একবার নতুন
+pairing লাগবে। Debug signer-এর এই সীমা Wi-Fi toggle-এ key পুনর্ব্যবহারের আচরণ থেকে আলাদা।
+
+> **আগের routing build:** 1.2-তে ADB pairing একই আছে; capture/replay বদলে shell
 > UID policy ও diagnostics যোগ হয়েছে। বর্তমান APK/অনুমতি/ফোনের audio test-এর জন্য
 > [সর্বশেষ APK/যাচাই/ফোন নির্দেশনা](AUDIOPIPE_VERIFICATION_BN.md) এবং
 > [routing audit](AUDIO_ROUTING_AUDIT_BN.md) পড়ো। নিচের 1.1 build results ঐতিহাসিক।
@@ -84,8 +132,9 @@ Shizuku চলতে পারে, কিন্তু তার pairing বা p
 
 - Authorization Forget না করলে প্রতিবার pairing দরকার হওয়ার কথা নয়। Wireless debugging
   চালু করে **Connect / verify shell** চাপো; mDNS ব্যর্থ হলে বর্তমান connection port দাও।
-- TLS authorization ব্যর্থ হলে Settings-এর Paired devices থেকে শুধু AudioPipe-এর entry
-  Forget করে নতুন code দিয়ে pair করো। Shizuku-এর entry মুছতে হবে না।
+- TLS authorization ব্যর্থ হলে Wireless debugging পুরো চালু হওয়া পর্যন্ত অপেক্ষা করে
+  retry করো। AudioPipe authorization সত্যিই সরানো হয়ে থাকলে বা বারবার rejected হলেই
+  নতুন code দিয়ে pair করো। Saved-key unlock error-এ Forget/clear-data প্রথম পদক্ষেপ নয়।
 - Wrong/expired code হলে Settings-এ নতুন pairing dialog খুলে নতুন code ও port দাও।
 - প্রয়োজনে Xiaomi battery settings-এ AudioPipe-এর background/No restrictions অনুমতি দাও।
 - Pairing-এর জন্য Microphone, Nearby devices বা location permission লাগে না। বর্তমান 1.2 build-এ
