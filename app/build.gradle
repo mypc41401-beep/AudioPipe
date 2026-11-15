@@ -3,11 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-// Robolectric runs on a Linux JVM, so it needs Conscrypt's JVM native library.
-// Keep the Android AAR (and its Android ABIs) in the production APK.
+// Robolectric 4.11 installs its JVM crypto provider globally. Its tested 2.5.2
+// provider avoids the newer Conscrypt XDH generator/Java 17 NamedParameterSpec
+// incompatibility during an uncached SDK download (robolectric/robolectric#11345).
+// This substitution is UnitTest-only; the shipped Android TLS provider stays 2.9.0.
 configurations.matching { it.name.contains('UnitTest') }.configureEach {
     resolutionStrategy.dependencySubstitution {
-        substitute module('org.conscrypt:conscrypt-android') using module('org.conscrypt:conscrypt-openjdk-uber:2.9.0')
+        substitute module('org.conscrypt:conscrypt-android') using module('org.conscrypt:conscrypt-openjdk-uber:2.5.2')
     }
 }
 
