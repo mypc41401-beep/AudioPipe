@@ -35,6 +35,9 @@ while time.monotonic() < end:
             (OUT/"paired-bluetooth.txt").write_text(radio)
             print("Android A2dpService reports the virtual speaker CONNECTED", flush=True)
             break
+        # A null-root dump can exit successfully while leaving the PREVIOUS XML file.
+        # Never tap coordinates from an earlier Settings screen.
+        adb("shell", "rm", "-f", "/data/local/tmp/bluetooth-window.xml")
         adb("shell", "uiautomator", "dump", "/data/local/tmp/bluetooth-window.xml")
         xml = adb("exec-out", "cat", "/data/local/tmp/bluetooth-window.xml")
         (OUT/"pairing-ui.xml").write_text(xml)
@@ -46,6 +49,10 @@ while time.monotonic() < end:
         if NAME in labels and any(x in labels for x in ["Connected", "Active", "Connected for media audio"]):
             print("Settings reports the virtual speaker connected", flush=True)
             break
+        if "Rename this device" in labels:
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            time.sleep(1)
+            continue
         action = next((n for n in nodes if n.get("resource-id") == "android:id/button1" and n.get("text", "").lower() in ["pair", "ok"]), None)
         if action is None:
             action = next((n for n in nodes if n.get("text") == NAME), None)
