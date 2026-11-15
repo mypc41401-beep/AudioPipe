@@ -2,6 +2,9 @@
 
 ## 1.3-এর reconnect পরিবর্তন
 
+বর্তমান 1.4 stability build-এ এই reconnect ব্যবস্থা বজায় আছে। সর্বশেষ build/test ফল ও
+APK-এর জন্য [verification report](AUDIOPIPE_VERIFICATION_BN.md) দেখো।
+
 Wi-Fi/ Wireless debugging বন্ধ হলে paired-device entry থাকতে পারে, কিন্তু আগের TCP
 port বা socket আর কাজ নাও করতে পারে। AudioPipe এখন সেই পুরোনো port-কে পরিচয় হিসেবে
 ধরে রাখে না। Saved RSA identity আগের একই Android Keystore AES-GCM format-এ থাকে;

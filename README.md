@@ -22,6 +22,16 @@ the developer. An accepted policy, APK build, or preferred-device request is not
   status says **Policy accepted; split not yet observed**. Persistent wrong/unknown routes stop the policy.
 - Foreground service owns the state and control connection. Activity recreation does not reconstruct
   status from empty spinner selections. Stop/process death returns control to Android's default routing.
+- Wireless ADB retains the encrypted RSA identity and discovers changed connection ports through
+  Wi-Fi NSD. Recovery is bounded and owned by the visible UI/existing routing service. Android can
+  turn Wireless debugging off after Wi-Fi loss; the user must enable that setting again.
+- Steady-state native observations run about every 15 seconds, with bounded startup/mismatch checks
+  and coalesced device-change events. The UI shows the last observation time. This reduces observer
+  overhead; it does not establish that a physical phone's audio stutter has been resolved.
+- **Repair AudioPipe policy** checks ADB before removing the owned policy, awaits cleanup, then
+  recreates it once. A failed preflight leaves the old policy intact. Repeated repairs have a 30-second
+  cooldown. Normal Stop keeps foreground ownership through cleanup. It never restarts other apps,
+  changes their buffers, or restarts audioserver. See [Bengali stability and phone test guide](AUDIO_STABILITY_BN.md).
 - Local diagnostic export includes output IDs, observations, lifecycle/errors, and CPU/heap snapshots;
   it omits ADB keys, pairing codes, control tokens, MACs and the installed-app list. No automatic upload.
 - Simultaneous media requires Android multi-audio-focus. If Start asks for it, use **Enable simultaneous
@@ -55,9 +65,10 @@ secure API-34 emulator, and records launch/memory/crash logs. Native policy regi
 separate route-change test skips explicitly if the HAL has no second endpoint. They do **not** simulate or verify Xiaomi Bluetooth hardware isolation.
 The separate virtual-Bluetooth workflow pairs a pinned Google Bumble A2DP sink with Netsim,
 then verifies two ordinary original-player UIDs through the production service, real Start/Stop UI,
-background/recreation and reconnect. That suite passed all three tests, including resolving a
-codec-negotiation port change from 42 to 49. This remains software Bluetooth testing, not an X-906
-or Xiaomi acoustic test. The latest APK and exact result links are in the verification report above.
+background/recreation, repeated Start/Stop, two minutes of playback, owned-policy Repair and Bluetooth
+reconnect. Its assertions check sparse observations, native UID/output evidence and bounded helper
+descriptors. This remains software Bluetooth testing, not an X-906 or Xiaomi acoustic test. The
+latest APK, precise pass/skip counts and result links are in the verification report above.
 No public release is published by the workflows.
 
 See [third-party notices](THIRD_PARTY_NOTICES.md). Earlier build reviews are historical; the current

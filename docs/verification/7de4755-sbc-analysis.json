@@ -1,0 +1,19 @@
+{
+  "sbcSha256": "348df0c270b805e3b1c91cb2599085031504ece2dbe0189e3dc042e788eec5e8",
+  "decodedSeconds": 185.29235416666666,
+  "method": "1-second Hann FFT; L2 amplitude of bins 438..442 versus 658..662 Hz; RMS >=5 PCM units and other/selected <-35 dB; longest consecutive interval",
+  "selectedFrequencyHz": 660,
+  "otherFrequencyHz": 440,
+  "intervalSeconds": [
+    5,
+    130
+  ],
+  "matchingSeconds": 125,
+  "rmsRange": [
+    39.296458968970725,
+    39.542080696813784
+  ],
+  "worstOtherVsSelectedDb": -50.059793515720436,
+  "atLeast120Seconds": true,
+  "limits": "Generated tones at a software A2DP sink. No speaker waveform or physical Redmi/X-906/BitChord test. Raw SBC lacks arrival timing; this cannot establish absence of stutter, latency, absolute silence or acoustic isolation."
+}

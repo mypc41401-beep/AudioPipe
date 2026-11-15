@@ -1,0 +1,82 @@
+{
+  "commit": "7de4755fb6930e3e3388eee281ebe32acc6cb5ca",
+  "mainRun": 43758884245,
+  "bluetoothRun": 43758884247,
+  "lint": {
+    "Error": 0,
+    "Warning": 88
+  },
+  "permissions": [
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "android.permission.POST_NOTIFICATIONS",
+    "com.asdfg.soundmaster.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+  ],
+  "unitTests": {
+    "tests": 51,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "runtimeTests": {
+    "tests": 13,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1
+  },
+  "btTests": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "crashLogBytes": 0,
+  "exactArtifactLaunch": "Starting: Intent { cmp=com.asdfg.soundmaster/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.asdfg.soundmaster/.MainActivity\nTotalTime: 1166\nWaitTime: 1169\nComplete\n",
+  "sbc": {
+    "bytes": 7596841,
+    "sha256": "348df0c270b805e3b1c91cb2599085031504ece2dbe0189e3dc042e788eec5e8"
+  },
+  "apk": {
+    "bytes": 30921912,
+    "sha256": "4e60a440283954f86fca23dbdf165f9588e3f090f2bcee22be7627bd3f40e5fa",
+    "v2VerifiedByCI": true,
+    "fixtureMarkersAbsent": true,
+    "versionName": "1.4-stability-diagnostics",
+    "versionCode": 5,
+    "signerCertificateSha256": "89d58b550188f07c549993279f087787e6c5d868daa8815990c67530246e86bb"
+  },
+  "artifacts": {
+    "apk": 14179452747,
+    "unit": 14179970638,
+    "android14": 14179084105,
+    "virtualBluetooth": 14179079245
+  },
+  "toneAnalysis": {
+    "sbcSha256": "348df0c270b805e3b1c91cb2599085031504ece2dbe0189e3dc042e788eec5e8",
+    "decodedSeconds": 185.29235416666666,
+    "method": "1-second Hann FFT; L2 amplitude of bins 438..442 versus 658..662 Hz; RMS >=5 PCM units and other/selected <-35 dB; longest consecutive interval",
+    "selectedFrequencyHz": 660,
+    "otherFrequencyHz": 440,
+    "intervalSeconds": [
+      5,
+      130
+    ],
+    "matchingSeconds": 125,
+    "rmsRange": [
+      39.296458968970725,
+      39.542080696813784
+    ],
+    "worstOtherVsSelectedDb": -50.059793515720436,
+    "atLeast120Seconds": true,
+    "limits": "Generated tones at a software A2DP sink. No speaker waveform or physical Redmi/X-906/BitChord test. Raw SBC lacks arrival timing; this cannot establish absence of stutter, latency, absolute silence or acoustic isolation."
+  },
+  "physicalRedmiBitChordX906Tested": false,
+  "limits": [
+    "Native output IDs and generated software Bluetooth tones are not acoustic verification.",
+    "Two minutes of soak is not a long-term battery or thermal benchmark.",
+    "Raw SBC has no packet-arrival timestamps; frequency analysis cannot verify lack of stutter.",
+    "Debug signing differs across CI runs; updating a previous install may require uninstall and one new pairing."
+  ]
+}
