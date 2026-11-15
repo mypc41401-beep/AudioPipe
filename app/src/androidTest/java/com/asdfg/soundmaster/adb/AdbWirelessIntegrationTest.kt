@@ -140,15 +140,24 @@ class AdbWirelessIntegrationTest {
             shell.setAutoReconnectOwner(owner, true)
             awaitConnection(shell)
             device.executeShellCommand("settings put global adb_wifi_enabled 0")
+            // Settings observers are asynchronous. Prove the real system listener stopped
+            // before enabling it again; a quick 0/1 write alone can coalesce into no restart.
+            awaitCondition("System Wireless debugging listener must actually stop") {
+                systemConnectionPort(device) !in 1..65535
+            }
             // Ensure the scenario needs a NEW transport, even on ROMs that retain established
             // TLS sessions after disabling their listener. The encrypted key is untouched.
             shell.disconnect()
             shell.setAutoReconnectOwner(owner, true)
             awaitCondition("ADB must stop advertising a stale verified connection") { !shell.isConnected }
             device.executeShellCommand("settings put global adb_wifi_enabled 1")
+            awaitCondition("System Wireless debugging listener must restart") {
+                systemConnectionPort(device) in 1..65535
+            }
             // No pair(), typed port or explicit connect() after restarting the real TLS server.
             awaitConnection(shell)
             assertEquals("2000", shell.commandSync("id -u").getOrThrow().trim())
+            assertEquals("NSD must find the actual restarted system port", systemConnectionPort(device), shell.getCachedPort())
             assertTrue("Encrypted identity must remain byte-for-byte unchanged", saved == prefs.getString("adbkey", null))
             assertTrue(prefs.getBoolean("adb_paired", false))
             println("RECONNECT_REAL_ADBD_RESTART_PASSED: saved identity; NSD; authenticated UID 2000")
@@ -179,6 +188,7 @@ class AdbWirelessIntegrationTest {
             device.executeShellCommand("settings put global adb_wifi_enabled 1")
             awaitConnection(shell)
             assertEquals("2000", shell.commandSync("id -u").getOrThrow().trim())
+            assertEquals("Wi-Fi recovery must use the current system port", systemConnectionPort(device), shell.getCachedPort())
             assertTrue("Wi-Fi restart must not regenerate the RSA identity", saved == prefs.getString("adbkey", null))
             shell.setAutoReconnectOwner(owner, false)
             shell.disconnect()
@@ -211,8 +221,14 @@ class AdbWirelessIntegrationTest {
     }
 
     private suspend fun awaitConnection(shell: ShellExecutor) {
-        awaitCondition("Automatic NSD recovery must authenticate; last state: ${shell.state.value.message}") { shell.isConnected }
+        try { awaitCondition("Automatic NSD recovery must authenticate") { shell.isConnected } }
+        finally { println("RECONNECT_FINAL_STATE: ${shell.state.value.message}") }
         assertTrue("Only a shell-verified connection may be green", shell.state.value.connected)
+    }
+    private fun systemConnectionPort(device: UiDevice): Int {
+        val words = Regex("(?i)(?<![a-z0-9])[0-9a-f]{8}(?![a-z0-9])")
+            .findAll(device.executeShellCommand("service call adb 10")).map { it.value }.toList()
+        return words.getOrNull(1)?.toLong(16)?.toInt() ?: -1
     }
     private suspend fun awaitCondition(message: String, predicate: () -> Boolean) {
         val deadline = android.os.SystemClock.elapsedRealtime() + 25_000
