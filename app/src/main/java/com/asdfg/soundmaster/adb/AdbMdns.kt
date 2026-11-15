@@ -75,7 +75,7 @@ object AdbMdns {
         var legacyBusy = false
         var legacyToken = 0
         var legacyTimeout: Job? = null
-        val listener = object : NsdManager.DiscoveryListener {
+        val listener: NsdManager.DiscoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String): Unit = synchronized(lock) {
                 started = true
                 if (closed) runCatching { manager.stopServiceDiscovery(this) }
@@ -104,7 +104,7 @@ object AdbMdns {
         }
         fun key(info: NsdServiceInfo): String = "${info.serviceName ?: System.identityHashCode(info)}|${info.serviceType}|" +
             if (Build.VERSION.SDK_INT >= 33) info.network.toString() else "legacy"
-        fun start() = synchronized(lock) {
+        fun start(): Unit = synchronized(lock) {
             if (Build.VERSION.SDK_INT >= 34) modern = Api34(this)
             requested = true
             try {
@@ -143,7 +143,7 @@ object AdbMdns {
             try { manager.resolveService(info, callback) }
             catch (e: Exception) { issue("service resolution failed (${e.javaClass.simpleName})"); finished() }
         }
-        override fun close() = synchronized(lock) {
+        override fun close(): Unit = synchronized(lock) {
             if (closed) return@synchronized
             closed = true
             modern?.close()

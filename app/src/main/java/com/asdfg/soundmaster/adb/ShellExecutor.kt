@@ -64,7 +64,7 @@ class ShellExecutor internal constructor(private val context: Context, private v
     @Volatile private var automaticPaused = false
 
     /** Only a visible Activity or the existing routing FGS owns background recovery. */
-    fun setAutoReconnectOwner(owner: Any, active: Boolean) = synchronized(ownerLock) {
+    fun setAutoReconnectOwner(owner: Any, active: Boolean): Unit = synchronized(ownerLock) {
         if (active) {
             owners.add(owner)
             automaticPaused = false
@@ -277,7 +277,7 @@ class ShellExecutor internal constructor(private val context: Context, private v
                 Result.failure(e)
             } catch (e: LinkageError) {
                 closeClient()
-                Result.failure(IOException("ADB crypto library could not load on this CPU/Android version.", e)).also {
+                Result.failure<T>(IOException("ADB crypto library could not load on this CPU/Android version.", e)).also {
                     mutableState.value = ConnectionState(it.exceptionOrNull()!!.message!!)
                 }
             } finally { if (automatic) automaticAttempt.set(false) }
@@ -288,7 +288,9 @@ class ShellExecutor internal constructor(private val context: Context, private v
         pauseAutomatic()
         pairing.getAndSet(null)?.close()
         closeClient()
-        mutableState.value = ConnectionState("Cancelled. Pairing identity is saved; use Connect / verify or reopen AudioPipe to retry.")
+        mutableState.value = ConnectionState(if (isSetUp)
+            "Cancelled. Pairing identity is saved; use Connect / verify or reopen AudioPipe to retry."
+            else "Cancelled. AudioPipe is not paired; open Setup / Pair to authorize it.")
     }
     fun disconnect() { cancelCurrentOperation() }
 
