@@ -94,6 +94,13 @@ class TwoUidBluetoothTest {
                         println("TWO_UID_BACKGROUND_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
                         context.stopService(Intent(context,SoundMasterService::class.java))
                         await("Stop must finish acknowledged native policy cleanup") { !SoundMasterService.running }
+                        await("Original peer must settle back to default Bluetooth after Stop") {
+                            val outputs=listOf(NativeRoutes.Device(bluetooth.id,"AUDIO_DEVICE_OUT_BLUETOOTH_A2DP",bluetooth.address),
+                                NativeRoutes.Device(speaker.id,"AUDIO_DEVICE_OUT_SPEAKER",speaker.address))
+                            val players=NativeRoutes.parse(ShellFixture.run("dumpsys media.audio_policy"),outputs,
+                                context.applicationInfo.uid,bluetooth.id,speaker.id)
+                            (0 until players.length()).any { val p=players.getJSONObject(it);p.getInt("uid")==peerUid && p.getInt("actual")==bluetooth.id }
+                        }
                     } else {
                         device.executeShellCommand("svc bluetooth disable")
                         await("Bluetooth loss must stop service, not leave a false routing claim") { !SoundMasterService.running }
@@ -103,6 +110,8 @@ class TwoUidBluetoothTest {
                 }
             }
         } finally {
+            println("TWO_UID_FINAL_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
+            println("TWO_UID_NATIVE_DUMP\n"+ShellFixture.run("dumpsys media.audio_policy"))
             context.stopService(Intent(context,SoundMasterService::class.java))
             player.stop();player.release()
             manager.abandonAudioFocusRequest(focus)
