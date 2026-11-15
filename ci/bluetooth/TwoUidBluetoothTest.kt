@@ -74,7 +74,7 @@ class TwoUidBluetoothTest {
                         .selectedItem?.toString()?.contains(peer)==true }
                     selected
                 }
-                repeat(2) { cycle ->
+                repeat(5) { cycle ->
                     activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                     await("Production service must observe both ordinary UIDs on disjoint outputs: ${SoundMasterService.state.value}") {
                         SoundMasterService.state.value.bothObserved && player.routedDevice?.id == speaker.id
@@ -84,21 +84,49 @@ class TwoUidBluetoothTest {
                     val foreground = context.getSystemService(ActivityManager::class.java).getRunningServices(100)
                         .firstOrNull { it.service.className==SoundMasterService::class.java.name }
                     assertTrue("Production service must be in foreground",foreground?.foreground == true)
-                    if (cycle==0) {
+                    if (cycle<4) {
+                      if (cycle==0) {
                         val before = report(context).getString("routeObservationAt")
+                        val initial = report(context).getJSONObject("service").getInt("snapshotCount")
+                        val initialFds = report(context).getJSONObject("originalPlayerRoutes").getInt("helperOpenFds")
                         device.pressHome()
-                        Thread.sleep(10000)
+                        // Two minutes of actual software Bluetooth playback, rather than a compile-only test.
+                        repeat(8) { tick ->
+                            Thread.sleep(15000)
+                            assertTrue("FGS must remain active during soak",SoundMasterService.state.value.active)
+                            assertBoth(context,peerUid,context.applicationInfo.uid,bluetooth.id,speaker.id)
+                            assertEquals("No automatic policy-reinstall loop",1,SoundMasterService.state.value.policyGeneration)
+                            println("TWO_UID_SOAK_TICK_${tick+1} "+report(context).getJSONObject("service"))
+                        }
                         assertTrue(SoundMasterService.state.value.active)
                         assertNotEquals("Observer must keep updating in background",before,report(context).getString("routeObservationAt"))
                         assertBoth(context,peerUid,context.applicationInfo.uid,bluetooth.id,speaker.id)
+                        val after = report(context)
+                        val probeDelta = after.getJSONObject("service").getInt("snapshotCount")-initial
+                        assertTrue("Steady-state native probes must be sparse, actual=$probeDelta",probeDelta in 6..12)
+                        assertTrue("Helper descriptors must not leak during soak",after.getJSONObject("originalPlayerRoutes")
+                            .getInt("helperOpenFds") <= initialFds+6)
                         context.startActivity(Intent(context,MainActivity::class.java)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
                         activity.moveToState(Lifecycle.State.RESUMED)
                         activity.recreate()
                         assertTrue("UI recreation must preserve service state",SoundMasterService.state.value.bothObserved)
                         println("TWO_UID_BACKGROUND_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
+                        activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.repairAudioButton).performClick() }
+                        await("Repair must re-establish original UID routing after acknowledged cleanup") {
+                            SoundMasterService.state.value.policyGeneration==2 && SoundMasterService.state.value.bothObserved
+                        }
+                        assertBoth(context,peerUid,context.applicationInfo.uid,bluetooth.id,speaker.id)
+                        repeat(3) { context.startService(Intent(context,SoundMasterService::class.java)
+                            .setAction(SoundMasterService.ACTION_REPAIR)) }
+                        Thread.sleep(1500)
+                        assertEquals("Repeated repair taps must not loop audio policy resets",2,SoundMasterService.state.value.policyGeneration)
+                        println("TWO_UID_REPAIR_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
+                      }
                         activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                         await("Stop must finish acknowledged native policy cleanup") { !SoundMasterService.running }
+                        assertEquals("Stopped diagnostics must discard previous routing evidence","No shell observation yet",
+                            report(context).getString("originalPlayerRoutes"))
                         await("Original peer must settle back to default Bluetooth after Stop") {
                             val outputs=listOf(NativeRoutes.Device(bluetooth.id,"AUDIO_DEVICE_OUT_BLUETOOTH_A2DP",bluetooth.address),
                                 NativeRoutes.Device(speaker.id,"AUDIO_DEVICE_OUT_SPEAKER",speaker.address))

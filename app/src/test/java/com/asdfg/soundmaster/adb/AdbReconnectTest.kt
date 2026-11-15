@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.flow.collect
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -113,6 +114,21 @@ class AdbReconnectTest {
         shell.cancelCurrentOperation();val before=creates
         advanceTimeBy(120_000);runCurrent();assertEquals(before,creates);assertFalse(shell.isConnected)
         shell.setAutoReconnectOwner(owner,true);runCurrent();assertTrue(shell.isConnected)
+        shell.setAutoReconnectOwner(owner,false);shell.disconnect()
+    }
+
+    @Test fun healthyBackgroundProbeDoesNotFlashDisconnectedOrDisableStart() = runTest {
+        val ctx=context();val connection=Connection()
+        val shell=ShellExecutor(ctx,ReconnectHooks({31001},{_,_->connection},{identity},backgroundScope))
+        val owner=Any();shell.setAutoReconnectOwner(owner,true);runCurrent()
+        assertTrue(shell.isConnected)
+        val states=mutableListOf<ShellExecutor.ConnectionState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { shell.state.collect { states.add(it) } }
+        val probes=connection.commands.count { it=="id -u" }
+        advanceTimeBy(30_000);runCurrent()
+        assertTrue("A real controller probe must have occurred",connection.commands.count { it=="id -u" }>probes)
+        assertTrue(states.isNotEmpty())
+        assertTrue("Healthy liveness checks must preserve usable connected UI state",states.all { it.connected && !it.busy })
         shell.setAutoReconnectOwner(owner,false);shell.disconnect()
     }
 

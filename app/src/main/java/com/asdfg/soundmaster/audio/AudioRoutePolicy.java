@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
  * Hidden API definitions verified against AOSP android-14.0.0_r1. OEM support is probed at runtime.
  */
 public final class AudioRoutePolicy implements AutoCloseable {
+    private int observationCount;
     private final Object service;
     private Object policy;
     private final int selectedUid;
@@ -114,6 +115,7 @@ public final class AudioRoutePolicy implements AutoCloseable {
     }
 
     public JSONObject observe() throws Exception {
+        final long started = android.os.SystemClock.elapsedRealtime();
         // QUERY_AUDIO_STATE is held by AOSP shell. Ordinary APK callers receive anonymized UIDs;
         // never interpret that redacted data as evidence of successful per-app routing.
         @SuppressWarnings("unchecked") List<AudioPlaybackConfiguration> players =
@@ -145,6 +147,8 @@ public final class AudioRoutePolicy implements AutoCloseable {
             speakerAvailable |= d.getId() == speaker.getId();
         }
         return new JSONObject().put("type", "status").put("players", observations)
+                .put("nativeSnapshotCount", ++observationCount)
+                .put("nativeSnapshotDurationMs", android.os.SystemClock.elapsedRealtime() - started)
                 .put("routeSource", "native_audio_policy_current_output_clients")
                 .put("helperCpuMillis", Process.getElapsedCpuTime())
                 .put("helperOpenFds", descriptorCount())
@@ -171,7 +175,7 @@ public final class AudioRoutePolicy implements AutoCloseable {
             child.destroy();
             try { child.getOutputStream().close(); } catch (java.io.IOException ignored) { }
             try { child.getErrorStream().close(); } catch (java.io.IOException ignored) { }
-            child.waitFor(100, TimeUnit.MILLISECONDS);
+            if (!child.waitFor(100, TimeUnit.MILLISECONDS)) child.destroyForcibly();
             result.cancel(true);
         }
     }

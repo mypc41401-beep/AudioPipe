@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -45,6 +46,15 @@ object RoutingDiagnostics {
                 previous?.uncaughtException(thread, error)
             }
             record("Application process started")
+            scope.launch {
+                var previous = ""
+                ShellExecutor.getInstance(app).state.collect { status ->
+                    if (!status.busy && status.message != previous) {
+                        previous = status.message
+                        record("ADB: ${status.message}")
+                    }
+                }
+            }
         }
     }
 
@@ -78,9 +88,16 @@ object RoutingDiagnostics {
             .put("routeSource", status.optString("routeSource"))
             .put("helperCpuMillis", status.optLong("helperCpuMillis", -1))
             .put("helperOpenFds", status.optInt("helperOpenFds", -1))
+            .put("nativeSnapshotCount", status.optInt("nativeSnapshotCount", -1))
+            .put("nativeSnapshotDurationMs", status.optLong("nativeSnapshotDurationMs", -1))
             .put("players", status.optJSONArray("players") ?: JSONArray()).toString()
         lastObservation = safe
         observationTime = Instant.now().toString()
+    }
+
+    fun clearObservation() {
+        lastObservation = null
+        observationTime = null
     }
 
     @Suppress("DEPRECATION")
@@ -94,15 +111,21 @@ object RoutingDiagnostics {
         for (d in manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) devices.put(JSONObject()
             .put("id", d.id).put("type", d.type).put("name", sanitize(d.productName.toString()))
             .put("sampleRates", JSONArray(d.sampleRates.toList())).put("isSink", d.isSink))
-        val json = JSONObject().put("reportVersion", 1).put("createdAt", Instant.now())
+        val json = JSONObject().put("reportVersion", 2).put("createdAt", Instant.now())
             .put("appVersion", app.packageManager.getPackageInfo(app.packageName, 0).versionName).put("androidSdk", Build.VERSION.SDK_INT)
             .put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
             .put("adbShellConnected", ShellExecutor.getInstance(app).isConnected)
             .put("adbStatus", sanitize(ShellExecutor.getInstance(app).state.value.message))
+            .put("adbIdentitySaved", ShellExecutor.getInstance(app).isSetUp)
+            .put("adbConnectionPortHint", ShellExecutor.getInstance(app).getCachedPort())
             .put("service", JSONObject().put("policyActive", state.active).put("starting", state.busy)
                 .put("androidReportsForeground", foreground?.foreground ?: false)
                 .put("selectedPackage", state.packageName ?: "none").put("selectedDeviceId", state.deviceId)
-                .put("status", sanitize(state.message)).put("bothRoutesObserved", state.bothObserved))
+                .put("status", sanitize(state.message)).put("bothRoutesObserved", state.bothObserved)
+                .put("policyGeneration", state.policyGeneration).put("repairAttempts", state.repairCount)
+                .put("repairStatus", sanitize(state.notice)).put("snapshotCount", state.snapshotCount)
+                .put("observationIntervalMs", SoundMasterService.OBSERVATION_INTERVAL_MS)
+                .put("lastObservationAgeMs", if (state.observedElapsed > 0) SystemClock.elapsedRealtime() - state.observedElapsed else -1))
             .put("audioOutputs", devices)
             .put("capture", "MediaProjection and AudioRecord not used; AudioPipe creates no replay AudioTrack")
             .put("originalPlayerRoutes", lastObservation?.let { JSONObject(it) } ?: "No shell observation yet")

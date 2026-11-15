@@ -111,6 +111,11 @@ class MainActivity : AppCompatActivity() {
             else startRouting()
         }
         findViewById<Button>(R.id.restorePlaybackButton).setOnClickListener { restoreSelectedPlayback() }
+        findViewById<Button>(R.id.repairAudioButton).setOnClickListener {
+            if (SoundMasterService.state.value.active && !SoundMasterService.state.value.busy) {
+                startService(Intent(this, SoundMasterService::class.java).setAction(SoundMasterService.ACTION_REPAIR))
+            }
+        }
         findViewById<Button>(R.id.enableSimultaneousButton).setOnClickListener { saveMultiFocus(true) }
         findViewById<Button>(R.id.normalFocusButton).setOnClickListener { saveMultiFocus(false) }
         findViewById<Button>(R.id.exportDiagnosticsButton).setOnClickListener {
@@ -259,7 +264,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun render(state: SoundMasterService.RoutingState) {
         val running = state.active || state.busy
-        serviceStatus.text = state.message
+        serviceStatus.text = buildString {
+            append(state.message)
+            if (state.observedAt > 0) append("\nLast checked: ").append(
+                java.text.DateFormat.getTimeInstance().format(java.util.Date(state.observedAt)))
+            if (state.notice.isNotBlank()) append("\n").append(state.notice)
+        }
         startStopButton.text = if (running) getString(R.string.stop) else getString(R.string.start)
         startStopButton.isEnabled = true
         appSpinner.isEnabled = !running
@@ -267,6 +277,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.restorePlaybackButton).isEnabled = !running
         findViewById<Button>(R.id.enableSimultaneousButton).isEnabled = !running
         findViewById<Button>(R.id.normalFocusButton).isEnabled = !running
+        findViewById<Button>(R.id.repairAudioButton).isEnabled = state.active && !state.busy
         if (running) {
             val appIndex = installedApps.indexOfFirst { it.packageName == state.packageName }
             if (appIndex >= 0 && appSpinner.selectedItemPosition != appIndex) appSpinner.setSelection(appIndex)

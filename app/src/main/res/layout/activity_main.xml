@@ -183,6 +183,20 @@
             android:textSize="18sp"
             style="@style/Widget.Material3.Button" />
 
+        <Button
+            android:id="@+id/repairAudioButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/repair_audio"
+            android:enabled="false"
+            style="@style/Widget.Material3.Button.TonalButton" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/repair_audio_explanation"
+            android:textColor="#AAAAAA" />
+
         <!-- Status -->
         <TextView
             android:id="@+id/serviceStatus"

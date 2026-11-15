@@ -267,7 +267,9 @@ class ShellExecutor internal constructor(private val context: Context, private v
         block: suspend () -> T): Result<T> = withContext((hooks?.scope?.coroutineContext?.get(ContinuationInterceptor) as? CoroutineDispatcher) ?: Dispatchers.IO) {
         operations.withLock {
             if (automatic) automaticAttempt.set(true)
-            if (showBusy) mutableState.value = ConnectionState(progress, busy = true, recovering = automatic)
+            // A healthy background probe must not flash red or temporarily block Start.
+            if (showBusy && (!automatic || !isConnected))
+                mutableState.value = ConnectionState(progress, busy = true, recovering = automatic)
             try { Result.success(block()) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {

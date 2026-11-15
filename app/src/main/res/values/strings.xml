@@ -20,6 +20,8 @@
     <string name="balance">Balance</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
+    <string name="repair_audio">Repair AudioPipe policy</string>
+    <string name="repair_audio_explanation">If audio routing becomes stuck, this recreates only AudioPipe’s policy once. Android’s default output may be heard briefly. It does not restart other apps or reset their audio buffers. Allow 30 seconds between repairs.</string>
     <string name="add_app">+ Add App</string>
     <string name="no_apps_selected">No apps selected</string>
     
