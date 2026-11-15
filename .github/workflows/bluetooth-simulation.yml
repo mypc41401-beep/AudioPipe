@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/bluetooth-simulation.yml'
       - 'ci/bluetooth/**'
+      - 'app/**'
 
 permissions:
   contents: read

@@ -84,19 +84,25 @@ public final class AudioRoutePolicy implements AutoCloseable {
         policy = candidate;
     }
 
-    private Object makeMix(AudioDeviceInfo device, boolean excludeSelected) throws Exception {
-        Class<?> ruleClass = Class.forName("android.media.audiopolicy.AudioMixingRule");
+    static Object mixingRule(int uid, boolean excludeSelected) throws Exception {
         Class<?> rb = Class.forName("android.media.audiopolicy.AudioMixingRule$Builder");
         Object rule = rb.getConstructor().newInstance();
         Method add = rb.getMethod("addMixRule", int.class, Object.class);
-        // RULE_MATCH_UID = 4; RULE_EXCLUDE_UID = 0x8004, as defined in the API-34 framework.
-        add.invoke(rule, excludeSelected ? 0x8004 : 4, Integer.valueOf(selectedUid));
+        // Builder APIs accept the base MATCH rule only. excludeMixRule adds the exclusion
+        // mask internally; addMixRule(0x8004, ...) is rejected by the Android 14 framework.
+        rb.getMethod(excludeSelected ? "excludeMixRule" : "addMixRule", int.class, Object.class)
+                .invoke(rule, 4 /* RULE_MATCH_UID */, Integer.valueOf(uid));
         for (int usage : new int[]{AudioAttributes.USAGE_MEDIA, AudioAttributes.USAGE_GAME,
                 AudioAttributes.USAGE_UNKNOWN}) {
             add.invoke(rule, 1 /* RULE_MATCH_ATTRIBUTE_USAGE */,
                     new AudioAttributes.Builder().setUsage(usage).build());
         }
-        Object builtRule = rb.getMethod("build").invoke(rule);
+        return rb.getMethod("build").invoke(rule);
+    }
+
+    private Object makeMix(AudioDeviceInfo device, boolean excludeSelected) throws Exception {
+        Class<?> ruleClass = Class.forName("android.media.audiopolicy.AudioMixingRule");
+        Object builtRule = mixingRule(selectedUid, excludeSelected);
         Class<?> mb = Class.forName("android.media.audiopolicy.AudioMix$Builder");
         Object mix = mb.getConstructor(ruleClass).newInstance(builtRule);
         mb.getMethod("setFormat", AudioFormat.class).invoke(mix, new AudioFormat.Builder()
