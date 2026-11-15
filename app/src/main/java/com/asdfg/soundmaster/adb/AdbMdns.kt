@@ -89,7 +89,7 @@ object AdbMdns {
             override fun onServiceFound(info: NsdServiceInfo): Unit = synchronized(lock) {
                 if (closed || !sameType(info.serviceType, type)) return@synchronized
                 val key = key(info)
-                if (modern?.contains(key) == true || pending.containsKey(key)) return@synchronized
+                if ((Build.VERSION.SDK_INT >= 34 && modern?.contains(key) == true) || pending.containsKey(key)) return@synchronized
                 // Bound callback registrations and metadata from a busy local network.
                 if (pending.size < 64) pending[key] = info
                 pump()
@@ -98,7 +98,7 @@ object AdbMdns {
                 if (closed) return@synchronized
                 val key = key(info)
                 pending.remove(key)
-                modern?.remove(key)
+                if (Build.VERSION.SDK_INT >= 34) modern?.remove(key)
                 ports.remove(key)?.let(lost)
             }
         }
@@ -119,7 +119,7 @@ object AdbMdns {
         }
         fun pump() {
             if (closed) return
-            modern?.let { it.pump(); return }
+            if (Build.VERSION.SDK_INT >= 34) modern?.let { it.pump(); return }
             if (legacyBusy || pending.isEmpty()) return
             val (key, info) = pending.entries.first().let { it.key to it.value }
             pending.remove(key)
@@ -146,7 +146,7 @@ object AdbMdns {
         override fun close(): Unit = synchronized(lock) {
             if (closed) return@synchronized
             closed = true
-            modern?.close()
+            if (Build.VERSION.SDK_INT >= 34) modern?.close()
             scope.cancel()
             pending.clear(); ports.clear()
             if (requested) runCatching { manager.stopServiceDiscovery(listener) }
