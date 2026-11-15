@@ -35,7 +35,7 @@ peer=app/build/ci-peer
 mkdir -p "$peer/classes" "$peer/dex"
 tools_dir="$ANDROID_HOME/build-tools/34.0.0"
 android_jar="$ANDROID_HOME/platforms/android-34/android.jar"
-javac -source 8 -target 8 -cp "$android_jar" -d "$peer/classes" ci/bluetooth/peer/PeerPlayerActivity.java
+javac -source 8 -target 8 -cp "$android_jar" -d "$peer/classes" ci/bluetooth/peer/*.java
 "$tools_dir/d8" --lib "$android_jar" --output "$peer/dex" "$peer/classes/dev/audiopipe/ci/peer/"*.class
 "$tools_dir/aapt" package -f -M ci/bluetooth/peer/AndroidManifest.xml -I "$android_jar" -F "$peer/unsigned.apk"
 cp "$peer/dex/classes.dex" "$peer/classes.dex"

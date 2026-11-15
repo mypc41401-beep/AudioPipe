@@ -48,6 +48,8 @@ class TwoUidBluetoothTest {
         val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes)
             .setOnAudioFocusChangeListener({}, Handler(context.mainLooper)).build()
         assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, manager.requestAudioFocus(focus))
+        context.getSharedPreferences(RouteSession.PREFS,Context.MODE_PRIVATE).edit()
+            .putString("selected_package",peer).commit()
         val frames = 4800
         val samples = ShortArray(frames*2) { i ->
             (1000*kotlin.math.sin(2*Math.PI*440*(i/2)/48000)).toInt().toShort()
@@ -62,19 +64,22 @@ class TwoUidBluetoothTest {
             player.play()
             assertNull(player.preferredDevice)
             device.executeShellCommand("am start -W -n $peer/.PeerPlayerActivity")
+            await("Peer source must be a real foreground media service") {
+                ShellFixture.run("dumpsys activity services $peer").contains("isForeground=true")
+            }
             ActivityScenario.launch(MainActivity::class.java).use { activity ->
+                await("The real app picker must restore the selected peer package") {
+                    var selected=false
+                    activity.onActivity { selected=it.findViewById<android.widget.Spinner>(com.asdfg.soundmaster.R.id.appSpinner)
+                        .selectedItem?.toString()?.contains(peer)==true }
+                    selected
+                }
                 repeat(2) { cycle ->
-                    activity.onActivity {
-                        it.startForegroundService(Intent(it,SoundMasterService::class.java).apply {
-                            putExtra("package",context.packageName)
-                            putExtra("device",bluetooth.id)
-                            putExtra("deviceName","AudioPipe CI Speaker")
-                        })
-                    }
+                    activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                     await("Production service must observe both ordinary UIDs on disjoint outputs: ${SoundMasterService.state.value}") {
-                        SoundMasterService.state.value.bothObserved && player.routedDevice?.id == bluetooth.id
+                        SoundMasterService.state.value.bothObserved && player.routedDevice?.id == speaker.id
                     }
-                    assertBoth(context,context.applicationInfo.uid,peerUid,bluetooth.id,speaker.id)
+                    assertBoth(context,peerUid,context.applicationInfo.uid,bluetooth.id,speaker.id)
                     @Suppress("DEPRECATION")
                     val foreground = context.getSystemService(ActivityManager::class.java).getRunningServices(100)
                         .firstOrNull { it.service.className==SoundMasterService::class.java.name }
@@ -85,21 +90,22 @@ class TwoUidBluetoothTest {
                         Thread.sleep(10000)
                         assertTrue(SoundMasterService.state.value.active)
                         assertNotEquals("Observer must keep updating in background",before,report(context).getString("routeObservationAt"))
-                        assertBoth(context,context.applicationInfo.uid,peerUid,bluetooth.id,speaker.id)
+                        assertBoth(context,peerUid,context.applicationInfo.uid,bluetooth.id,speaker.id)
                         context.startActivity(Intent(context,MainActivity::class.java)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
                         activity.moveToState(Lifecycle.State.RESUMED)
                         activity.recreate()
                         assertTrue("UI recreation must preserve service state",SoundMasterService.state.value.bothObserved)
                         println("TWO_UID_BACKGROUND_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
-                        context.stopService(Intent(context,SoundMasterService::class.java))
+                        activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                         await("Stop must finish acknowledged native policy cleanup") { !SoundMasterService.running }
                         await("Original peer must settle back to default Bluetooth after Stop") {
                             val outputs=listOf(NativeRoutes.Device(bluetooth.id,"AUDIO_DEVICE_OUT_BLUETOOTH_A2DP",bluetooth.address),
                                 NativeRoutes.Device(speaker.id,"AUDIO_DEVICE_OUT_SPEAKER",speaker.address))
                             val players=NativeRoutes.parse(ShellFixture.run("dumpsys media.audio_policy"),outputs,
-                                context.applicationInfo.uid,bluetooth.id,speaker.id)
-                            (0 until players.length()).any { val p=players.getJSONObject(it);p.getInt("uid")==peerUid && p.getInt("actual")==bluetooth.id }
+                                peerUid,bluetooth.id,speaker.id)
+                            listOf(peerUid,context.applicationInfo.uid).all { uid -> (0 until players.length()).any {
+                                val p=players.getJSONObject(it);p.getInt("uid")==uid && p.getInt("actual")==bluetooth.id } }
                         }
                     } else {
                         device.executeShellCommand("svc bluetooth disable")
@@ -108,6 +114,23 @@ class TwoUidBluetoothTest {
                         println("TWO_UID_DISCONNECT_STATUS "+SoundMasterService.state.value.message)
                     }
                 }
+                device.executeShellCommand("svc bluetooth enable")
+                await("Bonded virtual A2DP speaker must reconnect") {
+                    manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type==AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+                }
+                val reconnected=manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).first { it.type==AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+                await("App must restore the reconnected A2DP selection") {
+                    var ready=false
+                    activity.onActivity { ready=it.findViewById<android.widget.Spinner>(com.asdfg.soundmaster.R.id.outputSpinner)
+                        .selectedItem?.toString()?.contains("A2DP")==true }
+                    ready
+                }
+                activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
+                await("UI Start must work again after Bluetooth reconnection") { SoundMasterService.state.value.bothObserved }
+                assertBoth(context,peerUid,context.applicationInfo.uid,reconnected.id,speaker.id)
+                println("TWO_UID_RECONNECTED_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
+                activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
+                await("Final UI Stop must finish policy cleanup") { !SoundMasterService.running }
             }
         } finally {
             println("TWO_UID_FINAL_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
