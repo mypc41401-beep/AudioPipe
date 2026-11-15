@@ -165,8 +165,12 @@ class TwoUidBluetoothTest {
                     .any { it.type==AudioDeviceInfo.TYPE_BLUETOOTH_A2DP && it.id==installedPort })
                 assertBoth(context,peerUid,context.applicationInfo.uid,installedPort,speaker.id)
                 println("TWO_UID_RECONNECTED_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
-                activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
-                await("Final UI Stop must finish policy cleanup") { !SoundMasterService.running }
+                device.pressHome()
+                context.startService(Intent(context,SoundMasterService::class.java).setAction(SoundMasterService.ACTION_STOP))
+                await("Background Stop must finish policy cleanup") { !SoundMasterService.running }
+                await("Background cleanup must return the other original track to default A2DP") {
+                    player.routedDevice?.id==installedPort
+                }
                 await("Final Android service must exit") {
                     @Suppress("DEPRECATION")
                     val services=context.getSystemService(ActivityManager::class.java).getRunningServices(100)

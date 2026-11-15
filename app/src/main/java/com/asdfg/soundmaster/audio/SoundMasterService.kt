@@ -55,10 +55,20 @@ class SoundMasterService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         latestStartId = startId
-        if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_STOP) {
+            if (task == null) stopSelfResult(startId)
+            else {
+                mutableState.value = mutableState.value.copy(active = false, busy = true,
+                    message = "Stopping the native audio policy…")
+                task?.cancel()
+                session?.cancelStart()
+                // Retain foreground ownership until finally completes bounded policy cleanup.
+            }
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_REPAIR) {
-            if (task?.isActive != true) { stopSelfResult(startId); return START_NOT_STICKY }
-            if (mutableState.value.busy || repairRequested.get()) return START_NOT_STICKY
+            if (task == null) { stopSelfResult(startId); return START_NOT_STICKY }
+            if (task?.isActive != true || mutableState.value.busy || repairRequested.get()) return START_NOT_STICKY
             if (SystemClock.elapsedRealtime() - lastRepairRequest < REPAIR_COOLDOWN_MS) {
                 mutableState.value = mutableState.value.copy(notice = "Repair cooldown: wait 30 seconds before another repair. Audio was not reset again.")
                 return START_NOT_STICKY

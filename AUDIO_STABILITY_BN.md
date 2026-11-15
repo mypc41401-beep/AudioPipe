@@ -45,6 +45,8 @@ Export-এ actual original-player UID/session/output, foreground service state, 
 status ও transitions, connection-port hint, saved-identity flag, snapshot-এর বয়স/গণনা/সময়,
 policy generation/repair attempts, helper CPU/open descriptors এবং app heap/CPU থাকে।
 Stopped/restarting session-এর আগের routing evidence পরিষ্কার হয়।
+Normal Stop-এ bounded native cleanup শেষ না হওয়া পর্যন্ত foreground service রাখা হয়;
+UI background-এ থাকলেও cleanup-এর মাঝখানে app cached/frozen হয়ে যাওয়া এড়ানো হয়েছে।
 
 Private RSA key/ciphertext, pairing code, control token, MAC এবং পূর্ণ installed-app list
 export হয় না। রিপোর্ট নিজে upload হয় না। Helper CPU-র মধ্যে আলাদা dumpsys process বা

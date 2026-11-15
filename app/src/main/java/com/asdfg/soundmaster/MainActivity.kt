@@ -107,7 +107,8 @@ class MainActivity : AppCompatActivity() {
         }
         setupSelections()
         startStopButton.setOnClickListener {
-            if (SoundMasterService.running) stopService(Intent(this, SoundMasterService::class.java))
+            if (SoundMasterService.running) startService(Intent(this, SoundMasterService::class.java)
+                .setAction(SoundMasterService.ACTION_STOP))
             else startRouting()
         }
         findViewById<Button>(R.id.restorePlaybackButton).setOnClickListener { restoreSelectedPlayback() }
