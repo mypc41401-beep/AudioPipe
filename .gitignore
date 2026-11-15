@@ -41,3 +41,7 @@ Thumbs.db
 *.bak
 *.swp
 *~
+
+# Python CI helper caches
+__pycache__/
+*.pyc

@@ -2,6 +2,7 @@
 
 > **বর্তমান routing build:** 1.2-তে ADB pairing একই আছে; capture/replay বদলে shell
 > UID policy ও diagnostics যোগ হয়েছে। বর্তমান APK/অনুমতি/ফোনের audio test-এর জন্য
+> [সর্বশেষ APK/যাচাই/ফোন নির্দেশনা](AUDIOPIPE_VERIFICATION_BN.md) এবং
 > [routing audit](AUDIO_ROUTING_AUDIT_BN.md) পড়ো। নিচের 1.1 build results ঐতিহাসিক।
 
 এই পরিবর্তন AudioPipe-এর ADB setup/authentication-এর জন্য। `audio/`-এর capture ও routing
@@ -87,8 +88,8 @@ Shizuku চলতে পারে, কিন্তু তার pairing বা p
   Forget করে নতুন code দিয়ে pair করো। Shizuku-এর entry মুছতে হবে না।
 - Wrong/expired code হলে Settings-এ নতুন pairing dialog খুলে নতুন code ও port দাও।
 - প্রয়োজনে Xiaomi battery settings-এ AudioPipe-এর background/No restrictions অনুমতি দাও।
-- Pairing-এর জন্য Microphone, Nearby devices বা location permission লাগে না। Record
-  audio ও notification অনুমতি আগের মতো audio capture ও status-এর জন্য লাগে।
+- Pairing-এর জন্য Microphone, Nearby devices বা location permission লাগে না। বর্তমান 1.2 build-এ
+  microphone/capture অনুমতি লাগে না; foreground status-এর জন্য notification অনুমতি দাও।
 - ADB connected হওয়ার পর appops permission error এলে Xiaomi-এর আলাদা **USB debugging
   (Security settings)** option প্রাসঙ্গিক হতে পারে। Error না থাকলে সেটি বদলানোর দরকার নেই।
 
@@ -101,9 +102,10 @@ pairing server/adbd, TLS exporter, encrypted exchange ও saved identity দি�
 সর্বশেষ ফলাফল দেখো—এই test description নিজে test পাস করার দাবি নয়।
 
 নিজের Xiaomi-তে এখনও split-screen UI, OEM networking/ADB policy, appops permission এবং
-Bluetooth+speaker simultaneous routing পরীক্ষা করতে হবে। ADB verified হওয়ার পরে music
-app Bluetooth-এ রাখো; AudioPipe-তে দ্বিতীয় app ও built-in speaker নির্বাচন করে Start
-ও capture consent দাও। একটি করে source pause করে output আলাদা করে যাচাই করো; শেষে Stop।
+Bluetooth+speaker simultaneous routing পরীক্ষা করতে হবে। বর্তমান 1.2 build-এ ADB verified হওয়ার পরে AudioPipe-তে **BitChord ও X-906**
+নির্বাচন করে Start করো; অন্য media UID-গুলোর জন্য speaker policy চাওয়া হয়। Capture
+consent লাগে না। Simultaneous-media setting/reboot এবং listening test-এর সঠিক ধাপ
+[routing audit](AUDIO_ROUTING_AUDIT_BN.md)-এ আছে।
 
 ## নতুন dependencies
 

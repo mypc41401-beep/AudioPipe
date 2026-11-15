@@ -2,7 +2,8 @@
 
 এই কাজ `mypc41401-beep/AudioPipe` fork-এর `62ef091` থেকে চলেছে। Working Wireless
 ADB pairing, saved-key reconnect এবং `Connected — ADB shell verified` পথ রাখা হয়েছে।
-মূল upstream বদলানো হয়নি। এই সংস্করণ একটি **UID-policy পরীক্ষামূলক build**;
+মূল upstream বদলানো হয়নি। [সফল APK, latest CI ফল ও পূর্ণ ফোন নির্দেশনা](AUDIOPIPE_VERIFICATION_BN.md)
+দেখো। এই সংস্করণ একটি **UID-policy পরীক্ষামূলক build**;
 Redmi 11 Prime / Android 14 / X-906-এর acoustic isolation ডেভেলপার পরীক্ষা করেননি।
 
 ## পুরোনো routing কেন ব্যর্থ
@@ -67,7 +68,8 @@ grant করা হয় না। Xiaomi firmware-এ এই API/permission/HAL s
   MEDIA/GAME/UNKNOWN → selected Bluetooth; অন্য UID-এর একই usages → speaker।
 - `RouteDaemon.java` ও `RouteSession.kt`: APK-এর helper-কে local ADB দিয়ে launch;
   loopback-only random endpoint, 256-bit authentication token, bounded messages,
-  timeouts ও heartbeat। Arbitrary shell command দেওয়ার network interface নেই।
+  timeouts ও status polling। Reconnect/codec change-এ transient port ID বদলালে stable
+  device identity resolve হয়; actual live port service/UI-তে ফেরে। Ambiguous identity reject হয়। Arbitrary shell command দেওয়ার network interface নেই।
 - Original playback UID এবং native audio-policy current-output/client dump মিলিয়ে actual device IDs query
   করা হয়। দুই app active না হলে শুধু **Policy accepted; split not yet observed**।
   Wrong/unknown device দীর্ঘস্থায়ী হলে error দিয়ে policy সরানো হয়।
@@ -85,6 +87,11 @@ grant করা হয় না। Xiaomi firmware-এ এই API/permission/HAL s
   audio focus চাপার পরে reboot করতে হবে।
 - “Restore selected app playback” শুধু selected app-এর PLAY_AUDIO=allow করে। পুরোনো
   capture build-এর deny থাকলে এটি ব্যবহার করো; native routing mute hack ব্যবহার করে না।
+
+Android cached/frozen source process চলতি AudioTrack-এর routing-change callback প্রক্রিয়া
+করতে না পারলে re-route আটকে যেতে পারে। Source app foreground-এ এনে playback restart
+করে পরীক্ষা করতে হবে; AudioPipe অন্য app-এর background execution contract বদলায় না।
+পরীক্ষার সময় BitChord-এর স্বাভাবিক media foreground service/notification চালু রাখো।
 
 ## Diagnostics
 
@@ -104,8 +111,11 @@ API-34 secure emulator-এ আগের real adbd pairing/authentication test �
 observation, policy registration, UI background/recreation এবং cleanup এবং focus setting অক্ষত থাকা
 পরীক্ষা করে। Emulator HAL দ্বিতীয় output না দিলে অন্য device-এ সরানোর test skipped
 থাকে; এটিকে successful split routing বলা যায় না।
-এতে Bluetooth HAL, X-906, Redmi acoustic output বা দুই physical output-এর isolation
-পরীক্ষা হয় না। CI result না দেখে planned test-কে passed ধরা যাবে না।
+আলাদা Bumble/Netsim workflow-এ software A2DP device দিয়ে দুই UID-এর actual output,
+UI Start/Stop, background/recreation ও reconnect-এর তিনটি test পাস করেছে। পুরোনো
+one-endpoint suite-এর skip এখনও explicit; সেটিকে passed বলা হয়নি। পূর্ণ ফল latest
+verification report-এ আছে। X-906, Redmi acoustic output বা দুই physical output-এর
+isolation পরীক্ষা হয়নি।
 
 ## শুধু ফোন দিয়ে install ও guided test
 
@@ -115,7 +125,7 @@ observation, policy registration, UI background/recreation এবং cleanup এ
    অনুমতি দাও। এটি debug APK; runner signing key বদলালে পুরোনো AudioPipe uninstall
    করতে হতে পারে। তাতে AudioPipe-এর saved pairing মুছবে; BitChord মুছতে হবে না।
 2. Notifications অনুমতি দাও। Screen capture বা microphone অনুমতি লাগবে না। Xiaomi
-   app battery setting-এ AudioPipe-এর জন্য No restrictions ব্যবহার করে পরীক্ষা করো।
+   app battery setting-এ AudioPipe ও BitChord-এর জন্য No restrictions ব্যবহার করে পরীক্ষা করো।
 3. Wireless debugging চালু করে প্রয়োজনে AudioPipe-কে নতুন করে Setup / Pair করো।
    Shizuku Running এই authorization-এর বিকল্প নয়। “ADB shell verified” নিশ্চিত করো।
 4. X-906 connect করো এবং Bluetooth-এর **Media audio** চালু রাখো। BitChord-এর output
@@ -185,7 +195,8 @@ receiver permission যোগ করে। Launcher intent queries দিয়ে 
 QUERY_ALL_PACKAGES, ACCESS_NETWORK_STATE, MODIFY_AUDIO_SETTINGS ও RECORD_AUDIO নেই।
 HTTP cleartext flag false, backup false। ADB/TLS ও authenticated loopback socket-এর
 কাজ অপরিবর্তিত; routing helper shell-এর identity ব্যবহার করে, APK privileged নয়।
-নতুন কোনো dependency বা analytics/upload endpoint যোগ হয়নি।
+APK-তে নতুন কোনো dependency বা analytics/upload endpoint যোগ হয়নি। আলাদা optional CI
+Bluetooth probe Google Bumble-এর pinned revision ব্যবহার করে; সেটি APK-তে যায় না।
 
 Lint-এর hidden-API, self-signed ADB TLS trust-manager, dependency-version ও UI/resource
 warning-গুলো পূর্ণ security audit-এর বিকল্প নয়। ADB certificate trust সাধারণ web PKI-এর

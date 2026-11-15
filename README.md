@@ -6,7 +6,9 @@ This fork preserves its working in-app Wireless Debugging pairing. It does not i
 **Hardware status:** Redmi 11 Prime / X-906 Bluetooth acoustic isolation has not been verified by
 the developer. An accepted policy, APK build, or preferred-device request is not proof of split audio.
 
-[বাংলা audit, platform restrictions and phone testing guide](AUDIO_ROUTING_AUDIT_BN.md)
+[Verified APK, CI results and complete Bengali phone guide](AUDIOPIPE_VERIFICATION_BN.md)
+
+[বাংলা audit and platform restrictions](AUDIO_ROUTING_AUDIT_BN.md)
 
 [In-app ADB pairing guide](ADB_PAIRING_BN.md)
 
@@ -51,7 +53,12 @@ Java 17, Gradle wrapper 8.9, AGP 8.2, SDK 34:
 GitHub Actions builds/signs/verifies the debug APK, runs JVM tests and lint, installs and tests on a
 secure API-34 emulator, and records launch/memory/crash logs. Native policy registration and original-player observation use the emulator speaker. A
 separate route-change test skips explicitly if the HAL has no second endpoint. They do **not** simulate or verify Xiaomi Bluetooth hardware isolation.
-No public release is published by the workflow.
+The separate virtual-Bluetooth workflow pairs a pinned Google Bumble A2DP sink with Netsim,
+then verifies two ordinary original-player UIDs through the production service, real Start/Stop UI,
+background/recreation and reconnect. That suite passed all three tests, including resolving a
+codec-negotiation port change from 42 to 49. This remains software Bluetooth testing, not an X-906
+or Xiaomi acoustic test. The latest APK and exact result links are in the verification report above.
+No public release is published by the workflows.
 
 See [third-party notices](THIRD_PARTY_NOTICES.md). Earlier build reviews are historical; the current
 routing audit above supersedes their capture/replay behavior descriptions.
