@@ -19,7 +19,8 @@ permissions:
 
 concurrency:
   group: android-debug-${{ github.ref }}
-  cancel-in-progress: true
+  # Finish an active verification run before starting its successor.
+  cancel-in-progress: false
 
 jobs:
   build:

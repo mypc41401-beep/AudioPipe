@@ -14,7 +14,8 @@ permissions:
 
 concurrency:
   group: virtual-bluetooth-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve ongoing radio tests when a follow-up fix is pushed.
+  cancel-in-progress: false
 
 jobs:
   virtual-a2dp:
