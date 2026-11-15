@@ -83,7 +83,7 @@ class AdbSetupDialog : DialogFragment() {
         lifecycleScope.launch {
             shell.state.collect { state ->
                 message.text = state.message
-                listOf(pair, connect, discover, settings).forEach { it.isEnabled = !state.busy }
+                listOf(pair, connect, discover, settings).forEach { it.isEnabled = !state.busy || state.recovering }
             }
         }
         return AlertDialog.Builder(requireContext())

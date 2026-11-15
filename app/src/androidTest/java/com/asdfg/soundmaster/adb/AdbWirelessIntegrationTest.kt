@@ -126,4 +126,98 @@ class AdbWirelessIntegrationTest {
             device.executeShellCommand("service call adb 11")
         }
     }
+    @Test fun wirelessDebuggingRestartRediscoversPortWithoutPairingAgain() = runBlocking {
+        pairWithSystemAdbdAndAuthenticateShell()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val device = UiDevice.getInstance(instrumentation)
+        val shell = ShellExecutor.getInstance(context)
+        val prefs = context.getSharedPreferences("adb_settings", Context.MODE_PRIVATE)
+        val saved = prefs.getString("adbkey", null)
+        assertNotNull(saved)
+        val owner = Any()
+        try {
+            shell.setAutoReconnectOwner(owner, true)
+            awaitConnection(shell)
+            device.executeShellCommand("settings put global adb_wifi_enabled 0")
+            // Ensure the scenario needs a NEW transport, even on ROMs that retain established
+            // TLS sessions after disabling their listener. The encrypted key is untouched.
+            shell.disconnect()
+            shell.setAutoReconnectOwner(owner, true)
+            awaitCondition("ADB must stop advertising a stale verified connection") { !shell.isConnected }
+            device.executeShellCommand("settings put global adb_wifi_enabled 1")
+            // No pair(), typed port or explicit connect() after restarting the real TLS server.
+            awaitConnection(shell)
+            assertEquals("2000", shell.commandSync("id -u").getOrThrow().trim())
+            assertTrue("Encrypted identity must remain byte-for-byte unchanged", saved == prefs.getString("adbkey", null))
+            assertTrue(prefs.getBoolean("adb_paired", false))
+            println("RECONNECT_REAL_ADBD_RESTART_PASSED: saved identity; NSD; authenticated UID 2000")
+        } finally { shell.setAutoReconnectOwner(owner, false); shell.disconnect() }
+    }
+
+    @Test fun wifiRestartAndAppRecreationUseTheExistingIdentity() = runBlocking {
+        pairWithSystemAdbdAndAuthenticateShell()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val prefs = context.getSharedPreferences("adb_settings", Context.MODE_PRIVATE)
+        val saved = prefs.getString("adbkey", null)
+        val shell = ShellExecutor(context)
+        val owner = Any()
+        try {
+            shell.setAutoReconnectOwner(owner, true)
+            awaitConnection(shell)
+            device.executeShellCommand("svc wifi disable")
+            awaitCondition("Wi-Fi loss must invalidate ADB status") { !shell.isConnected }
+            device.executeShellCommand("svc wifi enable")
+            awaitCondition("Emulator must rejoin Wi-Fi") {
+                val manager = context.getSystemService(android.net.ConnectivityManager::class.java)
+                manager.allNetworks.any { manager.getNetworkCapabilities(it)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true }
+            }
+            // Android can turn Wireless debugging off on Wi-Fi loss. This fixture simulates
+            // the USER enabling it again; the production APK does not write secure settings.
+            device.executeShellCommand("settings put global adb_wifi_enabled 1")
+            awaitConnection(shell)
+            assertEquals("2000", shell.commandSync("id -u").getOrThrow().trim())
+            assertTrue("Wi-Fi restart must not regenerate the RSA identity", saved == prefs.getString("adbkey", null))
+            shell.setAutoReconnectOwner(owner, false)
+            shell.disconnect()
+            // A process recreation has only persisted key and a stale cached-port hint.
+            java.net.ServerSocket(0).use { prefs.edit().putInt("last_port", it.localPort).commit() }
+            val recreated = ShellExecutor(context)
+            try {
+                recreated.autoConnect().getOrThrow()
+                assertTrue(recreated.isConnected)
+                assertEquals("2000", recreated.commandSync("id -u").getOrThrow().trim())
+                assertTrue("App recreation must retain encrypted identity", saved == prefs.getString("adbkey", null))
+            } finally { recreated.disconnect() }
+            println("RECONNECT_REAL_WIFI_AND_RECREATION_PASSED: no new pairing code")
+        } finally { shell.setAutoReconnectOwner(owner, false); shell.disconnect() }
+    }
+
+    @Test fun unreadableEncryptedKeyIsNeverSilentlyReplaced() = runBlocking {
+        pairWithSystemAdbdAndAuthenticateShell()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val prefs = context.getSharedPreferences("adb_settings", Context.MODE_PRIVATE)
+        val original = prefs.getString("adbkey", null)
+        val broken = android.util.Base64.encodeToString(byteArrayOf(1,2,3), android.util.Base64.NO_WRAP)
+        try {
+            prefs.edit().putString("adbkey", broken).commit()
+            val failed = runCatching { AdbKey(PreferenceAdbKeyStore(prefs), "test") }
+            assertTrue(failed.exceptionOrNull() is SavedAdbIdentityException)
+            assertTrue("Unreadable encrypted identity must not be overwritten", broken == prefs.getString("adbkey", null))
+            assertTrue(prefs.getBoolean("adb_paired", false))
+        } finally { prefs.edit().putString("adbkey", original).commit() }
+    }
+
+    private suspend fun awaitConnection(shell: ShellExecutor) {
+        awaitCondition("Automatic NSD recovery must authenticate; last state: ${shell.state.value.message}") { shell.isConnected }
+        assertTrue("Only a shell-verified connection may be green", shell.state.value.connected)
+    }
+    private suspend fun awaitCondition(message: String, predicate: () -> Boolean) {
+        val deadline = android.os.SystemClock.elapsedRealtime() + 25_000
+        while (!predicate() && android.os.SystemClock.elapsedRealtime() < deadline) kotlinx.coroutines.delay(200)
+        assertTrue(message, predicate())
+    }
+
 }

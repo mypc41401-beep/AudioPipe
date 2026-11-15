@@ -27,6 +27,7 @@ class SoundMasterService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        ShellExecutor.getInstance(this).setAutoReconnectOwner(this, true)
         RoutingDiagnostics.record("Routing foreground service created; capture/replay disabled")
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(NOTIFICATION_CHANNEL,
@@ -142,6 +143,7 @@ class SoundMasterService : Service() {
     }
 
     override fun onDestroy() {
+        ShellExecutor.getInstance(this).setAutoReconnectOwner(this, false)
         RoutingDiagnostics.record("Routing foreground service destroyed; closing shell control socket")
         if (task?.isActive == true && running) mutableState.value = mutableState.value.copy(active = false, busy = true,
             message = "Stopping the native audio policy…")

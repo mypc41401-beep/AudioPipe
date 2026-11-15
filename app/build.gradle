@@ -19,8 +19,8 @@ android {
         applicationId "com.asdfg.soundmaster"
         minSdk 30
         targetSdk 34
-        versionCode 3
-        versionName "1.2-uid-routing-test"
+        versionCode 4
+        versionName "1.3-adb-reconnect"
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         testInstrumentationRunnerArguments timeout_msec: '90000'
 

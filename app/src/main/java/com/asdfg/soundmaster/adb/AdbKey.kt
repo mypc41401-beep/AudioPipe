@@ -37,6 +37,9 @@ import javax.net.ssl.X509ExtendedTrustManager
 
 private const val TAG = "AdbKey"
 
+class SavedAdbIdentityException(cause: Throwable? = null) : java.io.IOException(
+    "Saved ADB identity could not be unlocked; it was not replaced", cause)
+
 /**
  * ADB Key management - handles RSA key generation and storage
  * Extracted and adapted from Shizuku
@@ -108,11 +111,12 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) : AdbIdentity {
         publicKey.adbEncoded(name)
     }
 
-    private fun getOrCreateEncryptionKey(): Key? {
+    private fun getOrCreateEncryptionKey(): Key? = try {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
         keyStore.load(null)
 
-        return keyStore.getKey(ENCRYPTION_KEY_ALIAS, null) ?: run {
+        keyStore.getKey(ENCRYPTION_KEY_ALIAS, null) ?: run {
+            if (adbKeyStore.get() != null) throw SavedAdbIdentityException()
             val parameterSpec = KeyGenParameterSpec.Builder(
                 ENCRYPTION_KEY_ALIAS,
                 KeyProperties.PURPOSE_DECRYPT or KeyProperties.PURPOSE_ENCRYPT
@@ -126,7 +130,8 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) : AdbIdentity {
             keyGenerator.init(parameterSpec)
             keyGenerator.generateKey()
         }
-    }
+    } catch (e: SavedAdbIdentityException) { throw e }
+    catch (e: Exception) { throw SavedAdbIdentityException(e) }
 
     private fun encrypt(plaintext: ByteArray, aad: ByteArray?): ByteArray? {
         if (plaintext.size > Int.MAX_VALUE - IV_SIZE_IN_BYTES - TAG_SIZE_IN_BYTES) {
@@ -153,34 +158,24 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) : AdbIdentity {
     }
 
     private fun getOrCreatePrivateKey(): RSAPrivateKey {
-        var privateKey: RSAPrivateKey? = null
-
-        val aad = ByteArray(16)
-        "adbkey".toByteArray().copyInto(aad)
-
-        var ciphertext = adbKeyStore.get()
+        val aad = ByteArray(16).also { "adbkey".toByteArray().copyInto(it) }
+        val ciphertext = try { adbKeyStore.get() } catch (e: Exception) { throw SavedAdbIdentityException(e) }
         if (ciphertext != null) {
             try {
-                val plaintext = decrypt(ciphertext, aad)
-                val keyFactory = KeyFactory.getInstance("RSA")
-                privateKey =
-                    keyFactory.generatePrivate(PKCS8EncodedKeySpec(plaintext)) as RSAPrivateKey
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to decrypt stored key, generating new one", e)
-            }
+                val plaintext = decrypt(ciphertext, aad) ?: throw SavedAdbIdentityException()
+                try { return KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(plaintext)) as RSAPrivateKey }
+                finally { plaintext.fill(0) }
+            } catch (e: Exception) { throw SavedAdbIdentityException(e) }
         }
-        if (privateKey == null) {
-            val keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA)
-            keyPairGenerator.initialize(RSAKeyGenParameterSpec(2048, RSAKeyGenParameterSpec.F4))
-            val keyPair = keyPairGenerator.generateKeyPair()
-            privateKey = keyPair.private as RSAPrivateKey
-
-            ciphertext = encrypt(privateKey.encoded, aad)
-            if (ciphertext != null) {
-                adbKeyStore.put(ciphertext)
-            }
-        }
-        return privateKey
+        val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA)
+        generator.initialize(RSAKeyGenParameterSpec(2048, RSAKeyGenParameterSpec.F4))
+        val generated = generator.generateKeyPair().private as RSAPrivateKey
+        val encoded = generated.encoded
+        try {
+            val encrypted = encrypt(encoded, aad) ?: throw java.io.IOException("Could not encrypt the new ADB identity")
+            adbKeyStore.put(encrypted)
+        } finally { encoded.fill(0) }
+        return generated
     }
 
     fun importPrivateKey(keyBytes: ByteArray) {
@@ -360,7 +355,9 @@ class PreferenceAdbKeyStore(private val preference: SharedPreferences) : AdbKeyS
     private val preferenceKey = "adbkey"
 
     override fun put(bytes: ByteArray) {
-        preference.edit { putString(preferenceKey, String(Base64.encode(bytes, Base64.NO_WRAP))) }
+        check(preference.edit().putString(preferenceKey, Base64.encodeToString(bytes, Base64.NO_WRAP)).commit()) {
+            "Could not save the encrypted ADB identity"
+        }
     }
 
     override fun get(): ByteArray? {

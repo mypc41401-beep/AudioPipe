@@ -125,9 +125,6 @@ class MainActivity : AppCompatActivity() {
                 launch { shellExecutor.state.collect { updateAdbStatus(it) } }
             }
         }
-        if (shellExecutor.isSetUp && !shellExecutor.isConnected) {
-            lifecycleScope.launch { shellExecutor.autoConnect() }
-        }
         if (Build.VERSION.SDK_INT >= 33 && ActivityCompat.checkSelfPermission(this,
                 Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
@@ -284,7 +281,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.statusText).text = state.message
         findViewById<Button>(R.id.connectButton).apply {
             text = if (state.busy) "Working…" else if (state.connected) "Connected" else "Setup / Pair"
-            isEnabled = !state.busy
+            isEnabled = !state.busy || state.recovering
         }
         findViewById<Button>(R.id.importKeyButton).isEnabled = !state.busy
 
@@ -298,6 +295,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toast(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+
+    override fun onStart() {
+        super.onStart()
+        shellExecutor.setAutoReconnectOwner(this, true)
+    }
+
+    override fun onStop() {
+        shellExecutor.setAutoReconnectOwner(this, false)
+        super.onStop()
+    }
 
     override fun onResume() {
         super.onResume()

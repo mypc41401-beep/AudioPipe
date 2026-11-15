@@ -15,7 +15,7 @@ import java.io.IOException
 import java.net.InetAddress
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [30])
 class AdbDiscoveryTest {
     @Test fun `discovery failure reports the error and stops discovery`() = runTest {
         val manager = mock<NsdManager>()
