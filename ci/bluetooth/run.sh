@@ -41,7 +41,10 @@ javac -source 8 -target 8 -cp "$android_jar" -d "$peer/classes" ci/bluetooth/pee
 cp "$peer/dex/classes.dex" "$peer/classes.dex"
 (cd "$peer" && "$tools_dir/aapt" add unsigned.apk classes.dex)
 "$tools_dir/zipalign" -p -f 4 "$peer/unsigned.apk" "$peer/aligned.apk"
-"$tools_dir/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --out "$peer/peer.apk" "$peer/aligned.apk"
+# The test companion needs no signature relationship to the delivered APK. Use its own
+# disposable CI key instead of assuming Gradle stores its key in the host HOME.
+keytool -genkeypair -noprompt -keystore "$peer/peer.keystore" -alias peer -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=AudioPipe CI fixture'
+"$tools_dir/apksigner" sign --ks "$peer/peer.keystore" --ks-pass pass:android --key-pass pass:android --out "$peer/peer.apk" "$peer/aligned.apk"
 adb install --no-streaming "$peer/peer.apk"
 ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.asdfg.soundmaster.audio.NativePolicyIntegrationTest,com.asdfg.soundmaster.audio.TwoUidBluetoothTest
 python - <<'CHECK'
