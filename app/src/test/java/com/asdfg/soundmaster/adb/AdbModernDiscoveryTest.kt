@@ -17,6 +17,22 @@ import java.util.concurrent.Executor
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class AdbModernDiscoveryTest {
+    @Test fun failedOrStoppedWatchCannotBeMistakenForAnActiveSubscription() {
+        val manager=mock<NsdManager>();val context=mock<Context>()
+        whenever(context.getSystemService(NsdManager::class.java)).thenReturn(manager)
+        lateinit var discovery:NsdManager.DiscoveryListener
+        doAnswer { discovery=it.getArgument(4);null }.whenever(manager)
+            .discoverServices(any(),any(),any<NetworkRequest>(),any<Executor>(),any())
+        val first=AdbMdns.watch(context,AdbMdns.TLS_CONNECT,{},{},{})
+        assertTrue(first.isActive)
+        discovery.onStartDiscoveryFailed(AdbMdns.TLS_CONNECT,3)
+        assertFalse("A failed watch must allow the next recovery attempt to replace it",first.isActive)
+        val replacement=AdbMdns.watch(context,AdbMdns.TLS_CONNECT,{},{},{})
+        assertTrue(replacement.isActive)
+        discovery.onDiscoveryStopped(AdbMdns.TLS_CONNECT)
+        assertFalse(replacement.isActive)
+        replacement.close();first.close()
+    }
     @Test fun localUpdatesDeliverChangedPortsAndIgnoreRemoteAndLateCallbacks() {
         val manager=mock<NsdManager>();val context=mock<Context>()
         whenever(context.getSystemService(NsdManager::class.java)).thenReturn(manager)

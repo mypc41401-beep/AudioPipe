@@ -56,7 +56,7 @@ class ShellExecutor internal constructor(private val context: Context, private v
     private val ownerLock = Any()
     private val owners = mutableSetOf<Any>()
     private var networkObserver: AdbNetworkObserver? = null
-    private var serviceWatch: Closeable? = null
+    private var serviceWatch: AdbMdns.Subscription? = null
     @Volatile private var recovery: AdbRecoveryLoop? = null
     private val hint = AtomicInteger(-1)
     private val automaticAttempt = AtomicBoolean(false)
@@ -91,7 +91,8 @@ class ShellExecutor internal constructor(private val context: Context, private v
         loop.start()
     }
     private fun startServiceWatchLocked() {
-        if (serviceWatch != null || !wifiAvailable || recovery == null) return
+        if (hooks != null || serviceWatch?.isActive == true || !wifiAvailable || recovery == null) return
+        serviceWatch?.close()
         serviceWatch = runCatching {
             AdbMdns.watch(context, AdbMdns.TLS_CONNECT, ::connectionPortFound,
                 { port -> hint.compareAndSet(port, -1); recovery?.wake() }, { /* bounded discovery reports details */ })

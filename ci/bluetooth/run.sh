@@ -46,7 +46,7 @@ cp "$peer/dex/classes.dex" "$peer/classes.dex"
 keytool -genkeypair -noprompt -keystore "$peer/peer.keystore" -alias peer -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=AudioPipe CI fixture'
 "$tools_dir/apksigner" sign --ks "$peer/peer.keystore" --ks-pass pass:android --key-pass pass:android --out "$peer/peer.apk" "$peer/aligned.apk"
 adb install --no-streaming "$peer/peer.apk"
-./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=300000 -Pandroid.testInstrumentationRunnerArguments.class=com.asdfg.soundmaster.audio.NativePolicyIntegrationTest,com.asdfg.soundmaster.audio.TwoUidBluetoothTest
+./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest -PaudiopipeTestTimeoutMs=300000 -Pandroid.testInstrumentationRunnerArguments.class=com.asdfg.soundmaster.audio.NativePolicyIntegrationTest,com.asdfg.soundmaster.audio.TwoUidBluetoothTest
 python - <<'CHECK'
 import pathlib
 import xml.etree.ElementTree as ET

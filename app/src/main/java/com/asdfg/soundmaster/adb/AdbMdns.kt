@@ -19,6 +19,7 @@ import kotlin.coroutines.resumeWithException
 
 /** Local-device-only, cancellable discovery. API 34 keeps service information up to date. */
 object AdbMdns {
+    interface Subscription : Closeable { val isActive: Boolean }
     const val TLS_CONNECT = "_adb-tls-connect._tcp."
     const val TLS_PAIRING = "_adb-tls-pairing._tcp."
     private val direct = Executor { it.run() }
@@ -47,7 +48,7 @@ object AdbMdns {
     }
 
     fun watch(context: Context, type: String, found: (Int) -> Unit, lost: (Int) -> Unit,
-        issue: (String) -> Unit): Closeable {
+        issue: (String) -> Unit): Subscription {
         val manager = context.getSystemService(NsdManager::class.java)
             ?: throw IOException("Network service discovery is unavailable; enter the connection port manually")
         return Watch(manager, type, found, lost, issue).also { it.start() }
@@ -63,10 +64,11 @@ object AdbMdns {
     }.getOrDefault(false)
 
     private class Watch(val manager: NsdManager, val type: String, val found: (Int) -> Unit,
-        val lost: (Int) -> Unit, val issue: (String) -> Unit) : Closeable {
+        val lost: (Int) -> Unit, val issue: (String) -> Unit) : Subscription {
         val lock = Any()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        var closed = false
+        @Volatile var closed = false
+        override val isActive: Boolean get() = !closed
         var started = false
         var requested = false
         val ports = mutableMapOf<String, Int>()
@@ -84,7 +86,9 @@ object AdbMdns {
                 if (!closed) issue("mDNS could not start (error $errorCode)")
                 close()
             }
-            override fun onDiscoveryStopped(serviceType: String) {}
+            override fun onDiscoveryStopped(serviceType: String): Unit = synchronized(lock) {
+                if (!closed) { issue("mDNS discovery stopped"); close() }
+            }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
             override fun onServiceFound(info: NsdServiceInfo): Unit = synchronized(lock) {
                 if (closed || !sameType(info.serviceType, type)) return@synchronized

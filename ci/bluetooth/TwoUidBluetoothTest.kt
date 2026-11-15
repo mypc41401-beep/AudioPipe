@@ -125,6 +125,11 @@ class TwoUidBluetoothTest {
                       }
                         activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                         await("Stop must finish acknowledged native policy cleanup") { !SoundMasterService.running }
+                        if (cycle==0) await("Repair control requests must not leave an idle foreground service") {
+                            @Suppress("DEPRECATION")
+                            val services=context.getSystemService(ActivityManager::class.java).getRunningServices(100)
+                            services.none { it.service.className==SoundMasterService::class.java.name }
+                        }
                         assertEquals("Stopped diagnostics must discard previous routing evidence","No shell observation yet",
                             report(context).getString("originalPlayerRoutes"))
                         await("Original peer must settle back to default Bluetooth after Stop") {
@@ -162,6 +167,11 @@ class TwoUidBluetoothTest {
                 println("TWO_UID_RECONNECTED_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))
                 activity.onActivity { it.findViewById<android.widget.Button>(com.asdfg.soundmaster.R.id.startStopButton).performClick() }
                 await("Final UI Stop must finish policy cleanup") { !SoundMasterService.running }
+                await("Final Android service must exit") {
+                    @Suppress("DEPRECATION")
+                    val services=context.getSystemService(ActivityManager::class.java).getRunningServices(100)
+                    services.none { it.service.className==SoundMasterService::class.java.name }
+                }
             }
         } finally {
             println("TWO_UID_FINAL_DIAGNOSTIC\n"+RoutingDiagnostics.report(context))

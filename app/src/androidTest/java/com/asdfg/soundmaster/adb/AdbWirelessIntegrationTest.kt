@@ -177,15 +177,30 @@ class AdbWirelessIntegrationTest {
             awaitConnection(shell)
             device.executeShellCommand("svc wifi disable")
             awaitCondition("Wi-Fi loss must invalidate ADB status") { !shell.isConnected }
+            awaitCondition("System must finish disabling its Wireless debugging listener") {
+                systemConnectionPort(device) !in 1..65535
+            }
             device.executeShellCommand("svc wifi enable")
             awaitCondition("Emulator must rejoin Wi-Fi") {
                 val manager = context.getSystemService(android.net.ConnectivityManager::class.java)
-                manager.allNetworks.any { manager.getNetworkCapabilities(it)
-                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true }
+                // A transport can be announced while the interface is still CONNECTING.
+                // Enabling debugging then races the system's queued disconnect handler,
+                // which correctly turns it off again. Simulate the user acting AFTER join.
+                @Suppress("DEPRECATION")
+                val joined = manager.allNetworks.any { network ->
+                    manager.getNetworkCapabilities(network)
+                        ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+                        && manager.getNetworkInfo(network)?.isConnected == true
+                        && manager.getLinkProperties(network)?.linkAddresses?.isNotEmpty() == true
+                }
+                joined // no requirement for validated internet, even in this test fixture
             }
             // Android can turn Wireless debugging off on Wi-Fi loss. This fixture simulates
             // the USER enabling it again; the production APK does not write secure settings.
             device.executeShellCommand("settings put global adb_wifi_enabled 1")
+            awaitCondition("User-enabled Wireless debugging must actually start its listener") {
+                systemConnectionPort(device) in 1..65535
+            }
             awaitConnection(shell)
             assertEquals("2000", shell.commandSync("id -u").getOrThrow().trim())
             assertEquals("Wi-Fi recovery must use the current system port", systemConnectionPort(device), shell.getCachedPort())
